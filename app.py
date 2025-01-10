@@ -95,7 +95,7 @@ def handle_interactive_login(shell, environment, directory=None):
                     if "tstdb01" in output:
                         shell.send("Y\n")
                         logging.debug("Sent 'Y' for Sys1 target question.")
-                        time.sleep(5)
+                        time.sleep(3)
                         output = shell.recv(1024).decode("utf-8")
                         logging.debug(f"Received output: {output}")
 
@@ -116,7 +116,7 @@ def handle_interactive_login(shell, environment, directory=None):
                     if "thcicp01" in output:
                         shell.send("Y\n")
                         logging.info("Sent 'Y' for Sys2 target question.")
-                        time.sleep(5)
+                        time.sleep(3)
                         output = shell.recv(1024).decode("utf-8")
                         logging.debug(f"Received output: {output}")                  
                 # Check for successful login prompt
@@ -245,7 +245,7 @@ def trigger_batch_job(shell, store_number):
             logging.debug("Sent 'y' for confirmation.")
             time.sleep(2)
             output = shell.recv(4096).decode("utf-8")
-            logging.info(f"Received output: {output}")
+            logging.debug(f"Received output: {output}")
 
         # Step 8: Wait until the job runs and "Done!" is displayed
         output = wait_for_prompt(shell, "Done!")
@@ -267,14 +267,14 @@ def trigger_batch_job(shell, store_number):
         shell.close()
         logging.debug("Shell session closed.")
 
-def wait_for_prompt(shell, expected_prompt, timeout=30):
+def wait_for_prompt(shell, expected_prompt, timeout=90):
     """
     Waits for a specific prompt in the shell output within a timeout.
     """
     start_time = time.time()
     while time.time() - start_time < timeout:
         if shell.recv_ready():
-            output = shell.recv(1024).decode("utf-8")
+            output = shell.recv(4096).decode("utf-8")
             if expected_prompt in output:
                 return output
         time.sleep(1)  # Check every second
@@ -301,7 +301,7 @@ def extract_result_line(output, start_text, end_text):
 if __name__ == "__main__":
     CONFIG_PATH = "./config/config.json"  # Path to config.json
     ENVIRONMENT = "sys1"
-    STORE_NUMBER = "59163"
+    STORE_NUMBER = "59401"
 
     try:
         # Connect to the UNIX server
@@ -312,3 +312,5 @@ if __name__ == "__main__":
             logging.error("Batch job execution failed.")
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
+
+#check sys2 execution 
