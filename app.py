@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import logging
 import urllib3  # Import urllib3 for disabling warnings
 import time
+import re
 
 # Suppress only the single InsecureRequestWarning from urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -304,7 +305,7 @@ def trigger_batch_job(shell, store_number):
             logging.info("Batch job completed successfully.")
 
         # Step 9: Extract the dynamic result message
-        result_line = extract_result_line(output, ["There was", "There were"], "record moved into the tbf0_fill table")
+        result_line = extract_result_line(output, ["There was", "There were"], "moved into the tbf0_fill table")
         if not result_line:
             logging.error("Failed to parse the result line for UI.")
             raise ValueError("Failed to parse the result line for UI.")
@@ -333,22 +334,17 @@ def wait_for_prompt(shell, expected_prompt, timeout=90):
         time.sleep(1)  # Check every second
     return None
 
-def extract_result_line(output, start_markers, end_marker):
+def extract_result_line(output, prefixes, suffix):
     """
     Extracts a specific line containing dynamic values from the output.
     """
-    try:
-        for marker in start_markers:
-            start = output.find(marker)
-            if start != -1:
-                start += len(marker)
-                end = output.find(end_marker, start)
-                if end != -1:
-                    return f"{marker.strip()} {output[start:end].strip()} {end_marker.strip()}"
-        return None
-    except Exception as e:
-        logging.error(f"Error extracting result line: {e}")
-        return None
+    for prefix in prefixes:
+        # Adjust suffix to match "record" or "records"
+        pattern = rf"{prefix} (\d+) record(?:s)? {suffix}"
+        match = re.search(pattern, output)
+        if match:
+            return match.group(0)  # Return the full matched line
+    return None
 
 # Example usage
 if __name__ == "__main__":
@@ -356,7 +352,8 @@ if __name__ == "__main__":
     ENVIRONMENT = "sys1"
     STORE_NUMBER = "59403"
     RX_DETAILS = [
-        {"rx_nbr": "4614798", "fill_nbr": "1", "fill_dsp": "1"}
+        {"rx_nbr": "4614836", "fill_nbr": "1", "fill_dsp": "1"},
+        {"rx_nbr": "4614811", "fill_nbr": "1", "fill_dsp": "1"}  
     ]
 
     try:
