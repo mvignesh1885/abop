@@ -10,7 +10,7 @@ import time
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_config(config_path):
     """
@@ -25,15 +25,62 @@ def load_config(config_path):
     except json.JSONDecodeError as e:
         logging.error(f"Error decoding JSON from config file: {e}")
         return None
-"""    
-def validate_config(module_config, environment):
-    if "environments" not in module_config:
-        raise ValueError("Environments key is missing in module configuration")
-    if environment not in module_config["environments"]:
-        raise ValueError(f"Environment '{environment}' not found in module configuration")
-    if "username" not in module_config:
-        raise ValueError("Username is missing in module configuration")
-""" 
+
+# Step 1: Execute Sell Service
+def perform_sell_service(env, store_number, rx_details):
+    """
+    Perform the sell service for multiple RX details sequentially.
+
+    Parameters:
+        env (str): Environment (e.g., 'Sys1', 'Sys2').
+        store_number (str): Store number.
+        rx_details (list of dict): List of RX details, each containing 'rx_nbr', 'fill_nbr', and 'fill_dsp'.
+
+    Returns:
+        dict: Dictionary of results for each RX.
+    """
+    results = {}
+
+    try:
+
+        env = env.capitalize()
+
+        for idx, rx in enumerate(rx_details, 1):
+            rx_nbr = rx["rx_nbr"]
+            fill_nbr = rx["fill_nbr"]
+            fill_dsp = rx["fill_dsp"]
+
+            # Construct the URL for the sell service
+            url = f"https://rmps.walgreens.com/cgi-bin/possim.cgi?env={env}&store={store_number}&rxnbr={rx_nbr}&fillnbr={fill_nbr}&fillpart=0&filldsp={fill_dsp}&patresp=A&action=sell"
+            logging.debug(f"Calling URL for RX {idx}: {url}")
+
+            # Make the HTTP request
+            try:
+                response = requests.get(url, verify=False)  # Bypassing SSL verification for testing
+                if response.status_code == 200:
+                    if "The sell service has executed successfully" in response.text:
+                        logging.info(f"Sell service executed successfully for RX {idx}.")
+                        results[f"RX_{idx}"] = f"Success: RX {rx_nbr} sold."
+                    else:
+                        logging.warning(f"Unexpected response for RX {idx}: {response.text}")
+                        results[f"RX_{idx}"] = f"Warning: Unexpected response for RX {rx_nbr}."
+                else:
+                    logging.error(f"Failed HTTP request for RX {idx}. Status code: {response.status_code}")
+                    results[f"RX_{idx}"] = f"Error: HTTP {response.status_code}."
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Error during HTTP request for RX {idx}: {e}")
+                results[f"RX_{idx}"] = f"Error: {e}."
+
+            # Log the result of the current request before proceeding
+            logging.debug(f"Completed processing for RX {idx}: {results[f'RX_{idx}']}")
+
+    except Exception as e:
+        logging.error(f"Error in perform_sell_service: {e}")
+        raise
+
+    return results
+
+
 def fetch_value_from_url(config_path):
     """
     Fetch password from URL using username from config.json
@@ -249,13 +296,19 @@ def trigger_batch_job(shell, store_number):
 
         # Step 8: Wait until the job runs and "Done!" is displayed
         output = wait_for_prompt(shell, "Done!")
-        if not output:
-            raise ValueError("Job did not complete successfully.")
-        logging.info("Batch job completed successfully.")
+        logging.debug(f"Final batch job output: {output}")
+        if "Done!" not in output:
+            logging.error("Expected 'Done!' not found in batch job output.")
+            raise ValueError("Batch job did not complete successfully.")
+        else:
+            logging.info("Batch job completed successfully.")
 
         # Step 9: Extract the dynamic result message
-        result_line = extract_result_line(output, "There were", "records moved into the tbf0_fill table")
-        logging.debug(f"Batch job result: {result_line}")
+        result_line = extract_result_line(output, ["There was", "There were"], "record moved into the tbf0_fill table")
+        if not result_line:
+            logging.error("Failed to parse the result line for UI.")
+            raise ValueError("Failed to parse the result line for UI.")
+        logging.info(f"Batch job result: {result_line}")
 
         return result_line  # Return the result for display in the UI
     
@@ -280,37 +333,48 @@ def wait_for_prompt(shell, expected_prompt, timeout=90):
         time.sleep(1)  # Check every second
     return None
 
-def extract_result_line(output, start_text, end_text):
+def extract_result_line(output, start_markers, end_marker):
     """
     Extracts a specific line containing dynamic values from the output.
     """
     try:
-        start_idx = output.find(start_text)
-        if start_idx == -1:
-            return None
-        end_idx = output.find(end_text, start_idx)
-        if end_idx == -1:
-            return None
-        return output[start_idx:end_idx + len(end_text)].strip()
+        for marker in start_markers:
+            start = output.find(marker)
+            if start != -1:
+                start += len(marker)
+                end = output.find(end_marker, start)
+                if end != -1:
+                    return f"{marker.strip()} {output[start:end].strip()} {end_marker.strip()}"
+        return None
     except Exception as e:
         logging.error(f"Error extracting result line: {e}")
         return None
-
 
 # Example usage
 if __name__ == "__main__":
     CONFIG_PATH = "./config/config.json"  # Path to config.json
     ENVIRONMENT = "sys1"
-    STORE_NUMBER = "59401"
+    STORE_NUMBER = "59403"
+    RX_DETAILS = [
+        {"rx_nbr": "4614798", "fill_nbr": "1", "fill_dsp": "1"}
+    ]
 
     try:
-        # Connect to the UNIX server
-        result  = connect_to_unix_server(CONFIG_PATH, ENVIRONMENT, STORE_NUMBER)
-        if result:
-            logging.info(f"Result for UI: {result}")
+
+        # Step 1: Execute Sell Service
+        logging.info("Starting Step 1: Sell Service.")
+        sell_service_response = perform_sell_service(ENVIRONMENT, STORE_NUMBER, RX_DETAILS)
+        for rx_id, result in sell_service_response.items():  # Updated 'sell_results' to 'sell_service_response'
+            logging.info(f"{rx_id}: {result}")
+
+        # Step 2: Connect to UNIX Server and Trigger Batch Job
+        logging.info("Starting Step 2: Trigger Batch Job.")
+        batch_result   = connect_to_unix_server(CONFIG_PATH, ENVIRONMENT, STORE_NUMBER)
+        if batch_result:
+            logging.info(f"Result for UI: {batch_result}")
         else:
             logging.error("Batch job execution failed.")
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
 
-#check sys2 execution 
+#check batch result extraction logic
