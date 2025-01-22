@@ -11,7 +11,7 @@ import re
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_config(config_path):
     """
@@ -201,7 +201,16 @@ def handle_interactive_login(shell, environment, directory=None):
 
 def connect_to_unix_server(config_path, environment, store_number):
     """
-    Connect to UNIX server
+    Connects to the UNIX server, triggers the batch job, and keeps the connection open.
+
+    Args:
+        config (dict): Configuration loaded from config.json.
+        environment (str): Environment key (e.g., sys1, sys2).
+        store_number (str): Store number to be passed to the batch job.
+
+    Returns:
+        tuple: (str, paramiko.SSHClient, paramiko.Channel)
+               Result of the batch job, SSH client, and active shell channel.
     """
     config = load_config(config_path)
     if not config:
@@ -246,16 +255,13 @@ def connect_to_unix_server(config_path, environment, store_number):
         result = trigger_batch_job(shell, store_number)
         logging.debug(f"Batch job result: {result}")
 
-        return result   # Return the shell for further interactions
+        return result, ssh, shell   # Return the shell for further interactions
     except paramiko.AuthenticationException:
         logging.error("Authentication failed while connecting to UNIX server")
     except paramiko.SSHException as e:
         logging.error(f"SSH error occurred: {e}")
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
-    finally:
-        logging.info("Closing the SSH connection.")
-        ssh.close()
     #return None
 
 def trigger_batch_job(shell, store_number):
@@ -318,8 +324,7 @@ def trigger_batch_job(shell, store_number):
         raise
     finally:
         # Step 10: Close the shell session
-        shell.close()
-        logging.debug("Shell session closed.")
+        pass
 
 def wait_for_prompt(shell, expected_prompt, timeout=90):
     """
@@ -346,15 +351,96 @@ def extract_result_line(output, prefixes, suffix):
             return match.group(0)  # Return the full matched line
     return None
 
+def verify_rx_in_fill_table_via_sqlplus(shell, config, rx_details, store_number):
+    """
+    Verifies RX details in the database using SQL*Plus via the active shell connection.
+
+    Args:
+        shell (paramiko.Channel): Active shell channel from the UNIX server connection.
+        config (dict): Configuration loaded from config.json.
+        rx_details (list[dict]): List of RX details (rx_nbr, fill_nbr, fill_dsp).
+        store_number (str): Store number for the database query.
+
+    Returns:
+        list: Messages for the UI.
+        dict: Query results for use in the next step.
+    """
+    db_config = config["modules"]["db"]["environments"]["sys1"]  # Adjust for dynamic environments if needed
+    username = db_config["username"]
+    password = db_config["password"]
+
+    messages = []
+    query_results = []
+
+    try:
+        # Start SQL*Plus session
+        shell.send("sqlplus\n")
+        time.sleep(2)
+
+        # Provide username and password
+        shell.send(f"{username}\n")
+        time.sleep(2)
+        shell.send(f"{password}\n")
+        time.sleep(3)
+
+        for rx in rx_details:
+            query = (
+                f"SELECT COUNT(*) FROM TBF0_FILL WHERE STORE_NBR = {store_number} "
+                f"AND RX_NBR = {rx['rx_nbr']} AND FILL_NBR = {rx['fill_nbr']} "
+                f"AND FILL_NBR_DISPENSED = {rx['fill_dsp']};"
+            )
+            shell.send(f"{query}\n")
+            time.sleep(2)
+
+            # Capture the query result
+            if shell.recv_ready():
+                output = shell.recv(4096).decode("utf-8")
+                logging.debug(f"Query result for RX {rx['rx_nbr']}: {output}")
+
+                # Parse the result
+                if "1" in output:  # Check for a valid entry
+                    message = f"Rx {rx['rx_nbr']} is moved to fill table."
+                    messages.append(message)
+                    query_results.append({
+                        "rx_nbr": rx['rx_nbr'],
+                        "fill_nbr": rx['fill_nbr'],
+                        "fill_dsp": rx['fill_dsp'],
+                        "store_nbr": store_number,
+                        "found": True
+                    })
+                else:
+                    message = f"Rx {rx['rx_nbr']} is NOT found in the fill table."
+                    messages.append(message)
+                    query_results.append({
+                        "rx_nbr": rx['rx_nbr'],
+                        "fill_nbr": rx['fill_nbr'],
+                        "fill_dsp": rx['fill_dsp'],
+                        "store_nbr": store_number,
+                        "found": False
+                    })
+
+        # Exit SQL*Plus session
+        shell.send("exit;\n")
+        time.sleep(2)
+
+    except Exception as e:
+        logging.error(f"Error during database verification: {e}")
+        raise
+
+    return messages, query_results
+
+
 # Example usage
 if __name__ == "__main__":
     CONFIG_PATH = "./config/config.json"  # Path to config.json
     ENVIRONMENT = "sys1"
     STORE_NUMBER = "59403"
     RX_DETAILS = [
-        {"rx_nbr": "4614836", "fill_nbr": "1", "fill_dsp": "1"},
-        {"rx_nbr": "4614811", "fill_nbr": "1", "fill_dsp": "1"}  
+        {"rx_nbr": "4614694", "fill_nbr": "1", "fill_dsp": "1"},
+        {"rx_nbr": "4614693", "fill_nbr": "1", "fill_dsp": "1"}  
     ]
+
+    config = load_config(CONFIG_PATH) 
 
     try:
 
@@ -366,12 +452,29 @@ if __name__ == "__main__":
 
         # Step 2: Connect to UNIX Server and Trigger Batch Job
         logging.info("Starting Step 2: Trigger Batch Job.")
-        batch_result   = connect_to_unix_server(CONFIG_PATH, ENVIRONMENT, STORE_NUMBER)
+        batch_result, ssh_client, shell = connect_to_unix_server(CONFIG_PATH, ENVIRONMENT, STORE_NUMBER)
         if batch_result:
             logging.info(f"Result for UI: {batch_result}")
         else:
             logging.error("Batch job execution failed.")
+
+        # Step 3: Verify RX details in the database
+        logging.info("Starting Step 3: Verify Data in Fill Table.")
+        step3_messages, step3_results = verify_rx_in_fill_table_via_sqlplus(shell, config, RX_DETAILS, STORE_NUMBER)
+
+        # Display messages for UI from Step 3
+        for message in step3_messages:
+            logging.info(message)
+
+        # Save or process step3_results for future steps
+        logging.info("Step 3 completed successfully.")
+
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
+    finally:
+        # Close the SSH connection
+        if 'ssh_client' in locals() and ssh_client:
+            ssh_client.close()
+            logging.info("SSH connection closed.")
 
 #check batch result extraction logic
