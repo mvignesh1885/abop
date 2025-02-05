@@ -1,11 +1,17 @@
 import paramiko
 import json
 import requests
+import os
 from bs4 import BeautifulSoup
 import logging
 import urllib3  # Import urllib3 for disabling warnings
 import time
+from datetime import datetime, timedelta
 import re
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # Suppress only the single InsecureRequestWarning from urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -397,27 +403,34 @@ def verify_rx_in_fill_table_via_sqlplus(shell, config, rx_details, store_number)
                 output = shell.recv(4096).decode("utf-8")
                 logging.debug(f"Query result for RX {rx['rx_nbr']}: {output}")
 
-                # Parse the result
-                if "1" in output:  # Check for a valid entry
-                    message = f"Rx {rx['rx_nbr']} is moved to fill table."
-                    messages.append(message)
-                    query_results.append({
-                        "rx_nbr": rx['rx_nbr'],
-                        "fill_nbr": rx['fill_nbr'],
-                        "fill_dsp": rx['fill_dsp'],
-                        "store_nbr": store_number,
-                        "found": True
-                    })
-                else:
-                    message = f"Rx {rx['rx_nbr']} is NOT found in the fill table."
-                    messages.append(message)
-                    query_results.append({
-                        "rx_nbr": rx['rx_nbr'],
-                        "fill_nbr": rx['fill_nbr'],
-                        "fill_dsp": rx['fill_dsp'],
-                        "store_nbr": store_number,
-                        "found": False
-                    })
+                # Parse the SQL result
+                if "COUNT(*)" in output:
+                    match = re.search(r"COUNT\(\*\)\s*\n*-*\n*\s*(\d+)", output, re.MULTILINE)
+                    if match:
+                        count = int(match.group(1))
+                        if count > 0:
+                            logging.info(f"✅ RX {rx['rx_nbr']} is found in Fill table. Adding for processing.")
+                            message = f"Rx {rx['rx_nbr']} is moved to fill table."
+                            query_results.append({
+                                "rx_nbr": rx["rx_nbr"],
+                                "fill_nbr": rx["fill_nbr"],
+                                "fill_dsp": rx["fill_dsp"],
+                                "store_nbr": store_number,
+                                "found": True
+                            })
+                            messages.append(message)  # Only add success message when count > 0
+                        else:
+                            message = f"Rx {rx['rx_nbr']} is NOT found in the fill table."
+                            query_results.append({
+                                "rx_nbr": rx["rx_nbr"],
+                                "fill_nbr": rx["fill_nbr"],
+                                "fill_dsp": rx["fill_dsp"],
+                                "store_nbr": store_number,
+                                "found": False
+                            })
+                            messages.append(message)  # Only add failure message when count = 0
+                    else:
+                        logging.error("Failed to parse the COUNT(*) result from the SQL output.")
 
         # Exit SQL*Plus session
         shell.send("exit;\n")
@@ -429,28 +442,208 @@ def verify_rx_in_fill_table_via_sqlplus(shell, config, rx_details, store_number)
 
     return messages, query_results
 
+def save_pdf(rx_nbr, fill_nbr):
+    """
+    Locate and rename the downloaded PDF file.
+    """
+
+    save_directory = r"C:\Tools\ABOP"
+    default_filename = os.path.join(save_directory, "RxAuditPDFReportRH.pdf")
+    new_filename = os.path.join(save_directory, f"RxAuditPDFReportRH_{rx_nbr}_{fill_nbr}.pdf")
+
+    logging.info("Waiting for the PDF to finish downloading...")
+
+    # Wait up to 15 seconds for the file to appear
+    timeout = 15
+    start_time = time.time()
+
+    while not os.path.exists(default_filename):
+        if time.time() - start_time > timeout:
+            logging.error("❌ PDF file did not appear in the expected location.")
+            return
+        time.sleep(1)
+
+    logging.info(f"✅ Found PDF: {default_filename}")
+
+    # Rename the file
+    try:
+        os.rename(default_filename, new_filename)
+        logging.info(f"✅ Renamed PDF to: {new_filename}")
+    except Exception as e:
+        logging.error(f"❌ Failed to rename PDF: {e}")
+
+    # Cleanup: Delete generic PDFs and files older than 10 days
+    try:
+        ten_days_ago = datetime.now() - timedelta(days=10)
+
+        for file in os.listdir(save_directory):
+            file_path = os.path.join(save_directory, file)
+
+            # Remove only generic "RxAuditPDFReportRH.pdf" or files older than 10 days
+            if (file == "RxAuditPDFReportRH.pdf") or \
+               (file.endswith(".pdf") and os.path.getmtime(file_path) < ten_days_ago.timestamp()):
+
+                os.remove(file_path)
+                logging.info(f"🗑 Deleted old/generic file: {file_path}")
+
+    except Exception as e:
+        logging.error(f"❌ Failed to clean up old PDFs: {e}")
+
+def initialize_driver():
+    options = webdriver.EdgeOptions()
+
+    # ✅ Ignore SSL and security warnings
+    options.add_argument("--headless=new") 
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")  # Ensure full viewport capture
+    options.add_argument("--ignore-certificate-errors")
+    options.add_argument("--allow-running-insecure-content")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+
+    # ✅ Configure Edge to prevent automatic PDF downloads
+    prefs = {
+        "download.default_directory": r"C:\Tools\ABOP",  # Set desired save path
+        "plugins.always_open_pdf_externally": True,  # ✅ Open PDF in browser (no auto-download)
+        "download.prompt_for_download": False,  # ✅ Force Save As prompt
+        "profile.default_content_setting_values.automatic_downloads": 1,
+        "profile.default_content_setting_values.popups": 0,  # Disable popups
+        "safebrowsing.enabled": False  # Disable security warnings
+    }
+    options.add_experimental_option("prefs", prefs)
+
+    # Enable logging and debugging capabilities
+    options.set_capability("ms:loggingPrefs", {"performance": "ALL"})
+
+    # ✅ Launch Edge with modified settings
+    driver = webdriver.Edge(options=options)
+    return driver
+
+def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr):
+    """
+    Launch RX Audit App, log in, navigate to the next page, select the correct RX hyperlink, and download the PDF.
+    """
+    rx_audit_config = config["modules"]["rx_audit_app"]
+    url = rx_audit_config["environments"][environment]["url"]
+    username = rx_audit_config["username"]
+    password = rx_audit_config["password"]
+
+    logging.info(f"Launching RX Audit App at {url}")
+
+    logging.info("Initializing Edge WebDriver...")
+    driver = initialize_driver()  # Use the modified Edge WebDriver setup
+    driver.get(url)
+
+    try:
+        logging.info("Waiting for the page to load...")
+
+        # ✅ **Wait until login form loads**
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.NAME, "userid"))
+        )
+
+        # ✅ **Enter login details**
+        driver.find_element(By.NAME, "userid").send_keys(username)
+        driver.find_element(By.NAME, "password").send_keys(password)
+
+        # ✅ **Click Login button**
+        driver.find_element(By.CSS_SELECTOR, "input[type='submit']").click()
+
+        logging.info("Successfully logged into RX Audit App.")
+        
+        # ✅ **Wait for the RX Audit Form**
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.NAME, "textRxNbr"))
+        )
+
+        # ✅ **Identify and fill Store Number and Rx Number**
+        store_number_field = driver.find_element(By.NAME, "textStoreNbr")
+        rx_number_field = driver.find_element(By.NAME, "textRxNbr")
+
+        store_number_field.clear()
+        rx_number_field.clear()
+
+        expected_link_text = f"{rx_nbr}-{fill_nbr}"
+
+        store_number_field.send_keys(store_number)
+        rx_number_field.send_keys(rx_nbr)
+
+        logging.info(f"Entered Store Number and Rx Number: {rx_nbr}")
+
+        # ✅ **Submit the form**
+        next_button = driver.find_element(By.XPATH, "//input[@value='Next >>']")
+        next_button.click()
+
+        logging.info("Submitted RX Audit form successfully.")
+
+        
+        # ✅ **Wait for hyperlink to be available**
+        rx_link = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.LINK_TEXT, expected_link_text))
+        )
+
+        if not rx_link:
+            logging.error(f"Failed to find the RX hyperlink: {expected_link_text}")
+            return
+
+        logging.info(f"Found the RX hyperlink: {expected_link_text}")
+
+        # ✅ **Ensure `C:\Tools\ABOP` exists before saving**
+        save_directory = r"C:\Tools\ABOP"
+        if not os.path.exists(save_directory):
+            os.makedirs(save_directory)
+            logging.info(f"✅ Created directory: {save_directory}")
+
+        # ✅ **Click on the link to open the PDF page**
+        main_window = driver.current_window_handle
+        rx_link.click()
+        time.sleep(5)  # Wait for navigation to complete
+
+         # ✅ **Switch to the new window**
+        new_window = [window for window in driver.window_handles if window != main_window][0]
+        driver.switch_to.window(new_window)
+        logging.info("Switched to the new window containing the PDF.")
+
+        # ✅ **Save the PDF by clicking the save button**
+        save_pdf(rx_nbr, fill_nbr)
+
+        # ✅ **Close the new window and switch back to the main window**
+        #driver.close()
+        driver.switch_to.window(main_window)
+        logging.info("Switched back to the main window.")
+
+        return True  # ✅ Return success
+
+    except Exception as e:
+        logging.error(f"Error during RX Audit process: {e}")
+        return False  # Return failure
+
+    finally:
+        logging.info("Closing browser session.")
+        driver.quit()  # ✅ Close the browser properly
 
 # Example usage
 if __name__ == "__main__":
     CONFIG_PATH = "./config/config.json"  # Path to config.json
     ENVIRONMENT = "sys1"
-    STORE_NUMBER = "59403"
+    STORE_NUMBER = "59148"
     RX_DETAILS = [
-        {"rx_nbr": "4614694", "fill_nbr": "1", "fill_dsp": "1"},
-        {"rx_nbr": "4614693", "fill_nbr": "1", "fill_dsp": "1"}  
+        {"rx_nbr": "120442", "fill_nbr": "1", "fill_dsp": "1"},
+        {"rx_nbr": "120429", "fill_nbr": "1", "fill_dsp": "1"},
+        {"rx_nbr": "120431", "fill_nbr": "1", "fill_dsp": "1"} 
     ]
 
     config = load_config(CONFIG_PATH) 
 
     try:
 
-        # Step 1: Execute Sell Service
+        # ✅ Step 1: Execute Sell Service
         logging.info("Starting Step 1: Sell Service.")
         sell_service_response = perform_sell_service(ENVIRONMENT, STORE_NUMBER, RX_DETAILS)
         for rx_id, result in sell_service_response.items():  # Updated 'sell_results' to 'sell_service_response'
             logging.info(f"{rx_id}: {result}")
 
-        # Step 2: Connect to UNIX Server and Trigger Batch Job
+         # ✅ Step 2: Connect to UNIX Server and Trigger Batch Job
         logging.info("Starting Step 2: Trigger Batch Job.")
         batch_result, ssh_client, shell = connect_to_unix_server(CONFIG_PATH, ENVIRONMENT, STORE_NUMBER)
         if batch_result:
@@ -458,7 +651,7 @@ if __name__ == "__main__":
         else:
             logging.error("Batch job execution failed.")
 
-        # Step 3: Verify RX details in the database
+        # ✅ Step 3: Verify RX details in the database
         logging.info("Starting Step 3: Verify Data in Fill Table.")
         step3_messages, step3_results = verify_rx_in_fill_table_via_sqlplus(shell, config, RX_DETAILS, STORE_NUMBER)
 
@@ -469,12 +662,45 @@ if __name__ == "__main__":
         # Save or process step3_results for future steps
         logging.info("Step 3 completed successfully.")
 
+        # Filter RX details where `found` is True
+        found_rx_details = [
+            rx for rx in step3_results if rx.get("found") is True
+        ]   
+
+        
+        # ✅ Step 4: Run RX Audit for each found RX
+        processed_rx_set = set()
+
+        if found_rx_details:
+            logging.info("Starting Step 4: RX Audit App Login and PDF Generation.")
+    
+            for idx, rx in enumerate(found_rx_details, start=1):
+                rx_nbr = rx["rx_nbr"]
+                fill_nbr = rx["fill_nbr"]
+
+                # Skip duplicates
+                if (rx_nbr, fill_nbr) in processed_rx_set:
+                    logging.warning(f"Skipping duplicate RX: {rx_nbr}-{fill_nbr}")
+                    continue
+
+                logging.info(f"Processing RX {idx}/{len(found_rx_details)}: {rx_nbr}-{fill_nbr}")
+
+                logging.debug(f"Calling process_rx_audit_backend with RX {rx_nbr} - Fill {fill_nbr}")
+                success = process_rx_audit_backend(config, ENVIRONMENT, STORE_NUMBER, rx_nbr, fill_nbr)
+
+                if not success:
+                    logging.error(f"Failed processing RX Audit for Rx: {rx_nbr}-{fill_nbr}")
+
+                # Mark RX as processed
+                processed_rx_set.add((rx_nbr, fill_nbr))
+
+        else:
+            logging.info("No valid RXs found for RX Audit process.")
+       
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
+
     finally:
-        # Close the SSH connection
         if 'ssh_client' in locals() and ssh_client:
             ssh_client.close()
             logging.info("SSH connection closed.")
-
-#check batch result extraction logic
