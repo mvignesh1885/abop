@@ -7,3 +7,6 @@ env/
 venv/
 .vscode/
 config/
+build/
+dist/
+app.spec
