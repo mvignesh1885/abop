@@ -555,48 +555,59 @@ if __name__ == "__main__":
     ENVIRONMENT = "sys1"
     STORE_NUMBER = "59148"
     RX_DETAILS = [
-        {"rx_nbr": "120264", "fill_nbr": "1", "fill_dsp": "1"},
-        {"rx_nbr": "120315", "fill_nbr": "1", "fill_dsp": "1"},
-        {"rx_nbr": "120396", "fill_nbr": "1", "fill_dsp": "1"} 
-    ]
+        {"rx_nbr": "120293", "fill_nbr": "1", "fill_dsp": "1"},
+        {"rx_nbr": "120284", "fill_nbr": "1", "fill_dsp": "1"}
+                ]
 
     config = load_config(CONFIG_PATH) 
+    sell_selected = True         
+    move_to_fill_selected = True  
+    generate_abop_selected = True 
 
     try:
+        if sell_selected:
+            logging.info("Starting Step 1: Sell Service.")
+            sell_service_response = perform_sell_service(ENVIRONMENT, STORE_NUMBER, RX_DETAILS)
+            for rx_id, result in sell_service_response.items():  # Updated 'sell_results' to 'sell_service_response'
+                logging.info(f"{rx_id}: {result}")
 
-        logging.info("Starting Step 1: Sell Service.")
-        sell_service_response = perform_sell_service(ENVIRONMENT, STORE_NUMBER, RX_DETAILS)
-        for rx_id, result in sell_service_response.items():  # Updated 'sell_results' to 'sell_service_response'
-            logging.info(f"{rx_id}: {result}")
+        if move_to_fill_selected:
+            logging.info("Starting Step 2: Trigger Batch Job.")
+            batch_result, ssh_client, shell = connect_to_unix_server(CONFIG_PATH, ENVIRONMENT, STORE_NUMBER)
+            if batch_result:
+                logging.info(f"Result for UI: {batch_result}")
+            else:
+                logging.error("Batch job execution failed.")
 
-        logging.info("Starting Step 2: Trigger Batch Job.")
-        batch_result, ssh_client, shell = connect_to_unix_server(CONFIG_PATH, ENVIRONMENT, STORE_NUMBER)
-        if batch_result:
-            logging.info(f"Result for UI: {batch_result}")
-        else:
-            logging.error("Batch job execution failed.")
+        found_rx_details = []
+        if sell_selected and move_to_fill_selected:
+            logging.info("Starting Step 3: Verify Data in Fill Table.")
+            step3_messages, step3_results = verify_rx_in_fill_table_via_sqlplus(shell, config, RX_DETAILS, STORE_NUMBER)
 
-        logging.info("Starting Step 3: Verify Data in Fill Table.")
-        step3_messages, step3_results = verify_rx_in_fill_table_via_sqlplus(shell, config, RX_DETAILS, STORE_NUMBER)
+            # Display messages for UI from Step 3
+            for message in step3_messages:
+                logging.info(message)
 
-        # Display messages for UI from Step 3
-        for message in step3_messages:
-            logging.info(message)
+            # Save or process step3_results for future steps
+            logging.info("Step 3 completed successfully.")
 
-        # Save or process step3_results for future steps
-        logging.info("Step 3 completed successfully.")
-
-        # Filter RX details where `found` is True
-        found_rx_details = [
-            rx for rx in step3_results if rx.get("found") is True
-        ]   
+            # Filter RX details where `found` is True
+            found_rx_details = [rx for rx in step3_results if rx.get("found") is True]   
         
         processed_rx_set = set()
-
-        if found_rx_details:
+        if generate_abop_selected:            
             logging.info("Starting Step 4: RX Audit App Login and PDF Generation.")
     
-            for idx, rx in enumerate(found_rx_details, start=1):
+            if sell_selected and move_to_fill_selected:
+                if found_rx_details:
+                    rx_list_to_process = found_rx_details
+                else:
+                    logging.warning("Skipping Step 4: No valid RXs found after Step 3.")
+                    rx_list_to_process = []
+            else:
+                rx_list_to_process = RX_DETAILS
+
+            for idx, rx in enumerate(rx_list_to_process, start=1):
                 rx_nbr = rx["rx_nbr"]
                 fill_nbr = rx["fill_nbr"]
 
@@ -616,9 +627,6 @@ if __name__ == "__main__":
                 # Mark RX as processed
                 processed_rx_set.add((rx_nbr, fill_nbr))
 
-        else:
-            logging.info("No valid RXs found for RX Audit process.")
-       
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
 
