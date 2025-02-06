@@ -8,6 +8,7 @@ import urllib3  # Import urllib3 for disabling warnings
 import time
 from datetime import datetime, timedelta
 import re
+import sys
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -19,15 +20,24 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def load_config(config_path):
+if getattr(sys, 'frozen', False):
+    # Running as a PyInstaller bundle
+    BASE_DIR = sys._MEIPASS
+else:
+    # Running as a normal Python script
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.json")
+
+def load_config(CONFIG_PATH):
     """
     Load the configuration from config.json
     """
     try:
-        with open(config_path, 'r') as config_file:
+        with open(CONFIG_PATH, 'r') as config_file:
             return json.load(config_file)
     except FileNotFoundError:
-        logging.error(f"Config file not found: {config_path}")
+        logging.error(f"Config file not found: {CONFIG_PATH}")
         return None
     except json.JSONDecodeError as e:
         logging.error(f"Error decoding JSON from config file: {e}")
@@ -75,11 +85,11 @@ def perform_sell_service(env, store_number, rx_details):
     return results
 
 
-def fetch_value_from_url(config_path):
+def fetch_value_from_url(CONFIG_PATH):
     """
     Fetch password from URL using username from config.json
     """
-    config = load_config(config_path)
+    config = load_config(CONFIG_PATH)
     if not config:
         return None
 
@@ -177,9 +187,9 @@ def handle_interactive_login(shell, environment, directory=None):
         raise
 
 
-def connect_to_unix_server(config_path, environment, store_number):
+def connect_to_unix_server(CONFIG_PATH, environment, store_number):
     """Connects to the UNIX server, triggers the batch job, and keeps the connection open. """
-    config = load_config(config_path)
+    config = load_config(CONFIG_PATH)
     if not config:
         return None
 
@@ -189,7 +199,7 @@ def connect_to_unix_server(config_path, environment, store_number):
     directory = env_config.get("directory")
     username = module_config.get("username")
 
-    password = fetch_value_from_url(config_path)
+    password = fetch_value_from_url(CONFIG_PATH)
 
     if not password:
         logging.error("Failed to retrieve password for UNIX connection")
@@ -541,13 +551,13 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
 
 # Example usage
 if __name__ == "__main__":
-    CONFIG_PATH = "./config/config.json"  # Path to config.json
+    #CONFIG_PATH = "./config/config.json"  # Path to config.json
     ENVIRONMENT = "sys1"
     STORE_NUMBER = "59148"
     RX_DETAILS = [
-        {"rx_nbr": "120425", "fill_nbr": "1", "fill_dsp": "1"},
-        {"rx_nbr": "120324", "fill_nbr": "1", "fill_dsp": "1"},
-        {"rx_nbr": "120391", "fill_nbr": "1", "fill_dsp": "1"} 
+        {"rx_nbr": "120264", "fill_nbr": "1", "fill_dsp": "1"},
+        {"rx_nbr": "120315", "fill_nbr": "1", "fill_dsp": "1"},
+        {"rx_nbr": "120396", "fill_nbr": "1", "fill_dsp": "1"} 
     ]
 
     config = load_config(CONFIG_PATH) 
