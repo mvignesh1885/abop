@@ -1,0 +1,157 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f7f7f7;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    width: 90%;
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    text-align: center;
+    color: #208835; 
+    font-size: 28px;
+    font-weight: bold;
+}
+
+h2 {
+    color: #2e855a; /* Lighter green */
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+select, input {
+    width: 250px;
+    padding: 8px;
+    margin-top: 5px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+button {
+    padding: 10px 15px;
+    background-color: #2e8540;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+button:hover {
+    background-color: #3fa75a;
+}
+
+.utility-selection {
+    display: flex;
+    align-items: center;  /* Ensure vertical alignment */
+    gap: 10px;  /* Space between label and dropdown */
+    flex-wrap: nowrap; /* Prevent wrapping */
+    justify-content: flex-start; /* Align everything to the left */
+    width: fit-content; /* Make sure the container doesn't stretch */
+}
+
+.utility-selection label {
+    font-weight: bold;
+    white-space: nowrap; /* Prevent wrapping */
+    margin: 0; /* Remove extra margins */
+}
+
+.utility-selection select {
+    width: auto; /* Adjust width based on content */
+    min-width: 180px; /* Set a reasonable minimum width */
+    padding: 6px;
+}
+
+.utility-section input {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.utility-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-left: 20px;
+    margin-top: 20px; /* Increase spacing from the main content */
+    background: #f2f2f24f; /* Light grey */
+    padding: 15px;
+    border-radius: 5px;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 5px; /* Adjust spacing between label and checkbox */
+    margin-bottom: 5px;
+}
+
+.checkbox-group label {
+    display: flex;
+    align-items: center;
+    font-weight: bold;
+    cursor: pointer;
+    flex-direction: row-reverse; /* Ensures the checkbox is after the text */
+    gap: 3px; /* Reduce space between text and checkbox */
+}
+
+.checkbox-group input[type="checkbox"] {
+    margin-left: 5px; /* Adjust checkbox position */
+    transform: scale(1.1); /* Slightly increase checkbox size for better visibility */
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.input-group label {
+    display: block;
+    font-weight: bold;
+}
+
+.button-group {
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    padding: 8px 12px;
+    background-color: #2e8540;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #3fa75a;
+}
+
+.env-store-group {
+    display: flex;
+    align-items: center; /* Ensures vertical alignment */
+    gap: 10px; /* Adjust spacing between dropdown and text box */
+}
+
+.env-store-group select, 
+.env-store-group input {
+    height: 36px; /* Ensure both have the same height */
+    padding: 6px;  /* Uniform padding */
+    border: 1px solid #ccc; 
+    border-radius: 5px;
+    font-size: 14px; /* Ensure text inside inputs is also uniform */
+    line-height: normal; /* Reset any inconsistencies */
+}

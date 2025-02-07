@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QA Utilities</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+<div class="container">
+    <h1>QA Utilities</h1>
+    
+    <label for="utility-select">Select Utility:</label>
+    <select id="utility-select" onchange="loadUtility()">
+        <option value="">-- Select --</option>
+        <option value="abop">ABOP</option>
+    </select>
+
+    <div id="utility-container" class="utility-container">
+        <!-- Loaded content will be displayed here -->
+    </div>
+</div>
+
+<script>
+    function loadUtility() {
+        let selectedUtility = document.getElementById("utility-select").value;
+        if (selectedUtility) {
+            fetch("/load_utility/" + selectedUtility)
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById("utility-container").innerHTML = html;
+                    window.history.pushState({}, "", "/MainPage/" + selectedUtility);
+                })
+                .catch(error => console.error("Error loading utility:", error));
+        } else {
+            document.getElementById("utility-container").innerHTML = "";
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const urlPath = window.location.pathname.split("/");
+        if (urlPath.length > 2 && urlPath[2]) {
+            document.getElementById("utility-select").value = urlPath[2];
+            loadUtility();
+        }
+    });
+</script>
+
+</body>
+</html>
