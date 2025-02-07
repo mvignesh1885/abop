@@ -112,8 +112,17 @@ button:hover {
 
 .input-group {
     display: flex;
+    align-items: center;
     gap: 10px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+}
+
+.input-group button {
+    width: 40px;
+    height: 36px; /* Ensure button height matches input fields */
+    padding: 6px;
+    font-size: 16px;
+    border-radius: 5px;
 }
 
 .input-group label {
@@ -154,4 +163,14 @@ button:hover {
     border-radius: 5px;
     font-size: 14px; /* Ensure text inside inputs is also uniform */
     line-height: normal; /* Reset any inconsistencies */
+    box-sizing: border-box;
+}
+
+#store-number {
+    height: 36px !important;
+    margin: 0;
+    padding: 6px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 14px;
 }
