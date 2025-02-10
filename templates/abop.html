@@ -34,3 +34,40 @@
         <button id="submit-btn">Submit</button>
     </div>
 </div>
+<script>
+    
+    function updateInputGroupState() {
+        console.log("Running updateInputGroupState...");
+        
+        let moveToFillCheckbox = document.getElementById("move_fill"); // Corrected ID
+        let otherCheckboxes = [document.getElementById("sell_rx"), document.getElementById("abop")]; // Other checkboxes
+        let inputGroup = document.querySelector(".input-group");
+
+        if (!moveToFillCheckbox || !inputGroup) {
+            console.error("Required elements not found.");
+            return;
+        }
+
+        let otherChecked = otherCheckboxes.some(cb => cb.checked);
+
+        if (moveToFillCheckbox.checked && !otherChecked) {
+            inputGroup.classList.add("disabled");
+            inputGroup.querySelectorAll("input, button").forEach(el => el.disabled = true);
+        } else {
+            inputGroup.classList.remove("disabled");
+            inputGroup.querySelectorAll("input, button").forEach(el => el.disabled = false);
+        }
+    }
+
+    function setupCheckboxListeners() {
+        let allCheckboxes = document.querySelectorAll("input[type='checkbox']");
+        allCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener("change", updateInputGroupState);
+        });
+
+        console.log("Checkbox listeners attached.");
+        updateInputGroupState(); // Run once on load
+    }
+
+    document.addEventListener("DOMContentLoaded", setupCheckboxListeners);
+</script>

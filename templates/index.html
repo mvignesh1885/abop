@@ -29,8 +29,21 @@
             fetch("/load_utility/" + selectedUtility)
                 .then(response => response.text())
                 .then(html => {
-                    document.getElementById("utility-container").innerHTML = html;
+                    const utilityContainer = document.getElementById("utility-container");
+                    utilityContainer.innerHTML = html;
                     window.history.pushState({}, "", "/MainPage/" + selectedUtility);
+                    
+                    // Ensure JavaScript inside dynamically loaded content runs
+                    executeScripts(utilityContainer);
+
+                    // Call function manually after HTML loads
+                    setTimeout(() => {
+                        if (typeof setupCheckboxListeners === "function") {
+                            setupCheckboxListeners();
+                        } else {
+                            console.error("setupCheckboxListeners function is not defined.");
+                        }
+                    }, 100);
                 })
                 .catch(error => console.error("Error loading utility:", error));
         } else {
@@ -38,13 +51,18 @@
         }
     }
 
-    document.addEventListener("DOMContentLoaded", function() {
-        const urlPath = window.location.pathname.split("/");
-        if (urlPath.length > 2 && urlPath[2]) {
-            document.getElementById("utility-select").value = urlPath[2];
-            loadUtility();
+    function executeScripts(container) {
+        let scripts = container.getElementsByTagName("script");
+        for (let i = 0; i < scripts.length; i++) {
+            let newScript = document.createElement("script");
+            if (scripts[i].src) {
+                newScript.src = scripts[i].src;  // External JS files
+            } else {
+                newScript.textContent = scripts[i].textContent;  // Inline JS
+            }
+            document.body.appendChild(newScript);
         }
-    });
+    }
 </script>
 
 </body>
