@@ -29,6 +29,27 @@ else:
 
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.json")
 
+if len(sys.argv) > 1:
+    try:
+        input_data = json.loads(sys.argv[1])
+        print("Received input in move_to_fill.py:", json.dumps(input_data, indent=2))  # ✅ Debugging log
+    except json.JSONDecodeError:
+        print("Invalid JSON input")
+        sys.exit(1)
+else:
+    print("No input provided")
+    sys.exit(1)
+
+# Assign values from input_data
+ENVIRONMENT = input_data["ENVIRONMENT"]
+STORE_NUMBER = input_data["STORE_NUMBER"]
+RX_DETAILS = input_data["rx_details"]
+sell_selected = input_data["sell_selected"]
+move_to_fill_selected = input_data["move_to_fill_selected"]
+generate_abop_selected = input_data["generate_abop_selected"]
+
+print(f"Executing Move to Fill with:\n ENVIRONMENT: {ENVIRONMENT}\n STORE_NUMBER: {STORE_NUMBER}\n RX_DETAILS: {RX_DETAILS}")
+
 def load_config(CONFIG_PATH):
     """
     Load the configuration from config.json
@@ -551,17 +572,18 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
 
 # Example usage
 if __name__ == "__main__":
-    #CONFIG_PATH = "./config/config.json"  # Path to config.json
+    """
+    CONFIG_PATH = "./config/config.json"  # Path to config.json
     ENVIRONMENT = "sys1"
     STORE_NUMBER = "59148"
     RX_DETAILS = [
         {"rx_nbr": "430529", "fill_nbr": "1", "fill_dsp": "1"}
                 ]
-
-    config = load_config(CONFIG_PATH) 
     sell_selected = False         
     move_to_fill_selected = False  
     generate_abop_selected = True 
+    """
+    config = load_config(CONFIG_PATH)
 
     try:
         if sell_selected:

@@ -1,9 +1,64 @@
-// Ensure ABOPUtility is properly assigned to the global window object
 window.ABOPUtility = (() => {
     function attachEventListeners() {
         console.log("Attaching ABOP event listeners...");
         setupCheckboxListeners();
         setupInputGroupListeners();
+        setupSubmitListener(); // Attach submit event listener
+    }
+
+    function setupSubmitListener() {
+        document.getElementById("submit-btn").addEventListener("click", function () {
+            sendFormData();
+        });
+    }
+
+    function sendFormData() {
+        let environment = document.getElementById("env-dropdown").value;
+        let storeNumber = document.getElementById("store-number").value;
+    
+        let rxDetails = [];
+        document.querySelectorAll(".input-group").forEach(group => {
+            let rxNbr = group.querySelector(".rx-nbr").value;
+            let fillNbr = group.querySelector(".fill-nbr").value;
+            let fillDisp = group.querySelector(".fill-disp").value;
+            rxDetails.push({ "rx_nbr": rxNbr, "fill_nbr": fillNbr, "fill_dsp": fillDisp });
+        });
+    
+        let sellSelected = document.getElementById("sell_rx").checked;
+        let moveToFillSelected = document.getElementById("move_fill").checked;
+        let generateAbopSelected = document.getElementById("abop").checked;
+    
+        let formData = {
+            "ENVIRONMENT": environment,
+            "STORE_NUMBER": storeNumber,
+            "rx_details": rxDetails,
+            "sell_selected": sellSelected,
+            "move_to_fill_selected": moveToFillSelected,
+            "generate_abop_selected": generateAbopSelected
+        };
+    
+        console.log("Sending data to backend:", formData);
+    
+        fetch("/run_move_to_fill", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log("Response from backend:", data);
+            if (data.error) {
+                alert("Error: " + data.error);  // ✅ Show error alert if failure
+            } else {
+                alert("Process completed successfully.");  // ✅ Show success alert
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+            alert("Failed to connect to backend.");
+        });
     }
 
     function setupCheckboxListeners() {
@@ -18,16 +73,9 @@ window.ABOPUtility = (() => {
     }
 
     function updateInputGroupState() {
-        console.log("Running updateInputGroupState...");
-
         let moveToFillCheckbox = document.getElementById("move_fill");
         let otherCheckboxes = [document.getElementById("sell_rx"), document.getElementById("abop")];
         let inputGroups = document.querySelectorAll(".input-group");
-
-        if (!moveToFillCheckbox || inputGroups.length === 0) {
-            console.error("Required elements not found.");
-            return;
-        }
 
         let otherChecked = otherCheckboxes.some(cb => cb && cb.checked);
         inputGroups.forEach(inputGroup => {
@@ -56,16 +104,9 @@ window.ABOPUtility = (() => {
 
     function addInputGroup(button) {
         const inputGroupsContainer = document.getElementById("input-groups");
-        if (!inputGroupsContainer) {
-            console.error("Input groups container not found.");
-            return;
-        }
-
         const newGroup = button.closest(".input-group").cloneNode(true);
 
-        // Reset input values
         newGroup.querySelectorAll("input").forEach(input => input.value = "");
-
         inputGroupsContainer.appendChild(newGroup);
         updateInputGroupState();
     }
