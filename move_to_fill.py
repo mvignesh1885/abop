@@ -423,17 +423,22 @@ def save_pdf(rx_nbr, fill_nbr):
     while not os.path.exists(default_filename):
         if time.time() - start_time > timeout:
             logging.error("❌ PDF file did not appear in the expected location.")
-            return
+            return False
         time.sleep(1)
 
     logging.debug(f"✅ Found PDF: {default_filename}")
 
-    # Rename the file
+    # Ensure file is not in use before renaming
+    time.sleep(3)
+
+    # Attempt to rename the file
     try:
         os.rename(default_filename, new_filename)
         logging.debug(f"✅ Renamed PDF to: {new_filename}")
+        rename_success = True
     except Exception as e:
         logging.error(f"❌ Failed to rename PDF: {e}")
+        rename_success = False
 
     # Cleanup: Delete generic PDFs and files older than 10 days
     try:
@@ -452,16 +457,22 @@ def save_pdf(rx_nbr, fill_nbr):
     except Exception as e:
         logging.error(f"❌ Failed to clean up old PDFs: {e}")
 
+    return rename_success  # ✅ Now return after cleanup
+
 def initialize_driver():
     options = webdriver.EdgeOptions()
 
     options.add_argument("--headless=new") 
     options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")  
+    #options.add_argument("--window-size=1920,1080")  
     options.add_argument("--ignore-certificate-errors")
     options.add_argument("--allow-running-insecure-content")
     options.add_argument("--disable-popup-blocking")
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--remote-debugging-port=9222")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
 
     prefs = {
         "download.default_directory": r"C:\Tools\ABOP",  
@@ -506,6 +517,7 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
         driver.find_element(By.NAME, "password").send_keys(password)
 
         driver.find_element(By.CSS_SELECTOR, "input[type='submit']").click()
+        
 
         logging.info("Successfully logged into RX Audit App.")
 
@@ -550,15 +562,24 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
         rx_link.click()
         time.sleep(5)  
 
-        new_window = [window for window in driver.window_handles if window != main_window][0]
-        driver.switch_to.window(new_window)
-        logging.debug("Switched to the new window containing the PDF.")
+        # Wait for the file to appear before proceeding
+        default_filename = os.path.join(save_directory, "RxAuditPDFReportRH.pdf")
+        timeout = 20  
+        start_time = time.time()
 
-        save_pdf(rx_nbr, fill_nbr)
+        while not os.path.exists(default_filename):
+            if time.time() - start_time > timeout:
+                logging.error("❌ PDF file did not appear in the expected location.")
+                return False
+            time.sleep(2)
 
-        #driver.close()
-        driver.switch_to.window(main_window)
-        logging.debug("Switched back to the main window.")
+        logging.debug(f"✅ File downloaded: {default_filename}")
+
+        # 🔹 **NEW: Call save_pdf() function**
+        if save_pdf(rx_nbr, fill_nbr):
+            logging.info("✅ PDF saved and renamed successfully.")
+        else:
+            logging.error("❌ PDF renaming failed.")
 
         return True  
 

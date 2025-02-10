@@ -42,7 +42,7 @@ def load_utility(utility):
 def run_move_to_fill():
     try:
         data = request.get_json()
-        print("Received data from UI:", json.dumps(data, indent=2))  # ✅ Debugging log
+        #print("Received data from UI:", json.dumps(data, indent=2))  # ✅ Debugging log
 
         required_fields = ["ENVIRONMENT", "STORE_NUMBER", "rx_details", "sell_selected", "move_to_fill_selected", "generate_abop_selected"]
         if not all(field in data for field in required_fields):
@@ -52,12 +52,12 @@ def run_move_to_fill():
         script_path = os.path.join(os.getcwd(), "move_to_fill.py")
 
         # ✅ Add logging for subprocess execution
-        print("Executing move_to_fill.py with data:", json_data)
+        print("Executing move_to_fill.py")
 
         result = subprocess.run(["python", script_path, json_data], capture_output=True, text=True)
 
         if result.returncode == 0:
-            print("move_to_fill.py executed successfully:", result.stdout.strip())  # ✅ Log success
+            print("move_to_fill.py executed successfully")  # ✅ Log success
             return jsonify({"output": result.stdout.strip()})
         else:
             print("Error running move_to_fill.py:", result.stderr.strip())  # ✅ Log failure
