@@ -32,17 +32,10 @@
                     const utilityContainer = document.getElementById("utility-container");
                     utilityContainer.innerHTML = html;
                     window.history.pushState({}, "", "/MainPage/" + selectedUtility);
-                    
-                    // Ensure JavaScript inside dynamically loaded content runs
-                    executeScripts(utilityContainer);
-
-                    // Call function manually after HTML loads
+    
+                    // Ensure JS is loaded only after the content is added
                     setTimeout(() => {
-                        if (typeof setupCheckboxListeners === "function") {
-                            setupCheckboxListeners();
-                        } else {
-                            console.error("setupCheckboxListeners function is not defined.");
-                        }
+                        loadUtilityScript(selectedUtility);
                     }, 100);
                 })
                 .catch(error => console.error("Error loading utility:", error));
@@ -50,20 +43,35 @@
             document.getElementById("utility-container").innerHTML = "";
         }
     }
-
-    function executeScripts(container) {
-        let scripts = container.getElementsByTagName("script");
-        for (let i = 0; i < scripts.length; i++) {
-            let newScript = document.createElement("script");
-            if (scripts[i].src) {
-                newScript.src = scripts[i].src;  // External JS files
-            } else {
-                newScript.textContent = scripts[i].textContent;  // Inline JS
-            }
-            document.body.appendChild(newScript);
+    
+    function loadUtilityScript(utilityName) {
+        const scriptId = "utility-script";
+        let existingScript = document.getElementById(scriptId);
+    
+        // Remove old script if exists
+        if (existingScript) {
+            existingScript.remove();
         }
+    
+        let script = document.createElement("script");
+        script.id = scriptId;
+        script.src = `/static/${utilityName}.js`;
+        script.onload = function () {
+            console.log(`${utilityName}.js loaded successfully.`);
+    
+            setTimeout(() => {
+                if (window.ABOPUtility && typeof window.ABOPUtility.init === "function") {
+                    console.log("Executing ABOPUtility.init()");
+                    window.ABOPUtility.init();
+                } else {
+                    console.error("ABOPUtility.init is not defined.");
+                }
+            }, 100);
+        };
+    
+        document.body.appendChild(script);
     }
-</script>
-
+    </script>
+    
 </body>
 </html>

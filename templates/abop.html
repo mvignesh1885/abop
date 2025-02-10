@@ -20,13 +20,15 @@
         <input type="text" id="store-number" placeholder="Enter Store Number">
     </div>
 
-    <!-- Input Fields -->
-    <div class="input-group">
-        <button id="minus-btn">-</button>
-        <input type="text" id="rx-nbr" placeholder="Enter Rx Nbr">
-        <input type="text" id="fill-nbr" placeholder="Enter Fill Nbr">
-        <input type="text" id="fill-disp" placeholder="Enter Fill Disp">
-        <button id="plus-btn">+</button>
+    <!-- Input Groups Container -->
+    <div id="input-groups">
+        <div class="input-group">
+            <button class="minus-btn">-</button>
+            <input type="text" class="rx-nbr" placeholder="Enter Rx Nbr">
+            <input type="text" class="fill-nbr" placeholder="Enter Fill Nbr">
+            <input type="text" class="fill-disp" placeholder="Enter Fill Disp">
+            <button class="plus-btn">+</button>
+        </div>
     </div>
 
     <!-- Action Buttons -->
@@ -34,40 +36,5 @@
         <button id="submit-btn">Submit</button>
     </div>
 </div>
-<script>
-    
-    function updateInputGroupState() {
-        console.log("Running updateInputGroupState...");
-        
-        let moveToFillCheckbox = document.getElementById("move_fill"); // Corrected ID
-        let otherCheckboxes = [document.getElementById("sell_rx"), document.getElementById("abop")]; // Other checkboxes
-        let inputGroup = document.querySelector(".input-group");
 
-        if (!moveToFillCheckbox || !inputGroup) {
-            console.error("Required elements not found.");
-            return;
-        }
 
-        let otherChecked = otherCheckboxes.some(cb => cb.checked);
-
-        if (moveToFillCheckbox.checked && !otherChecked) {
-            inputGroup.classList.add("disabled");
-            inputGroup.querySelectorAll("input, button").forEach(el => el.disabled = true);
-        } else {
-            inputGroup.classList.remove("disabled");
-            inputGroup.querySelectorAll("input, button").forEach(el => el.disabled = false);
-        }
-    }
-
-    function setupCheckboxListeners() {
-        let allCheckboxes = document.querySelectorAll("input[type='checkbox']");
-        allCheckboxes.forEach(checkbox => {
-            checkbox.addEventListener("change", updateInputGroupState);
-        });
-
-        console.log("Checkbox listeners attached.");
-        updateInputGroupState(); // Run once on load
-    }
-
-    document.addEventListener("DOMContentLoaded", setupCheckboxListeners);
-</script>
