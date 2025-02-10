@@ -43,10 +43,14 @@ else:
 # Assign values from input_data
 ENVIRONMENT = input_data["ENVIRONMENT"]
 STORE_NUMBER = input_data["STORE_NUMBER"]
-RX_DETAILS = input_data["rx_details"]
 sell_selected = input_data["sell_selected"]
 move_to_fill_selected = input_data["move_to_fill_selected"]
 generate_abop_selected = input_data["generate_abop_selected"]
+
+RX_DETAILS = input_data.get("rx_details",[])
+
+if move_to_fill_selected and not sell_selected and not generate_abop_selected:
+    RX_DETAILS = []  # Ignore RX_DETAILS when only move_to_fill is selected
 
 print(f"Executing Move to Fill with:\n ENVIRONMENT: {ENVIRONMENT}\n STORE_NUMBER: {STORE_NUMBER}\n RX_DETAILS: {RX_DETAILS}")
 
