@@ -32,7 +32,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.json")
 if len(sys.argv) > 1:
     try:
         input_data = json.loads(sys.argv[1])
-        print("Received input in move_to_fill.py:", json.dumps(input_data, indent=2))  # ✅ Debugging log
+        #print("Received input in move_to_fill.py:", json.dumps(input_data, indent=2))  # ✅ Debugging log
     except json.JSONDecodeError:
         print("Invalid JSON input")
         sys.exit(1)
@@ -52,7 +52,7 @@ RX_DETAILS = input_data.get("rx_details",[])
 if move_to_fill_selected and not sell_selected and not generate_abop_selected:
     RX_DETAILS = []  # Ignore RX_DETAILS when only move_to_fill is selected
 
-print(f"Executing Move to Fill with:\n ENVIRONMENT: {ENVIRONMENT}\n STORE_NUMBER: {STORE_NUMBER}\n RX_DETAILS: {RX_DETAILS}")
+logging.info(f"Process started for Store {STORE_NUMBER} in {ENVIRONMENT}.")
 
 def load_config(CONFIG_PATH):
     """
@@ -194,7 +194,7 @@ def handle_interactive_login(shell, environment, directory=None):
                         logging.debug(f"Received output: {output}")                  
                 
                 if (environment == "sys1" and "ticpdb2" in output) or (environment == "sys2" and "thcicp01" in output):
-                    logging.info("Central Server Login complete.")
+                    logging.info("Central Server Login complete. Running Move to Fill...")
                     break
 
                 if "Password locked" in output or "Access denied" in output:
@@ -377,7 +377,7 @@ def verify_rx_in_fill_table_via_sqlplus(shell, config, rx_details, store_number)
                     if match:
                         count = int(match.group(1))
                         if count > 0:
-                            logging.debug(f"✅ RX {rx['rx_nbr']} is found in Fill table. Adding for processing.")
+                            logging.debug(f"RX {rx['rx_nbr']} is found in Fill table. Adding for processing.")
                             message = f"Rx {rx['rx_nbr']} is moved to fill table."
                             query_results.append({
                                 "rx_nbr": rx["rx_nbr"],
@@ -426,11 +426,11 @@ def save_pdf(rx_nbr, fill_nbr):
 
     while not os.path.exists(default_filename):
         if time.time() - start_time > timeout:
-            logging.error("❌ PDF file did not appear in the expected location.")
+            logging.error("PDF file did not appear in the expected location.")
             return False
         time.sleep(1)
 
-    logging.debug(f"✅ Found PDF: {default_filename}")
+    logging.debug(f"Found PDF: {default_filename}")
 
     # Ensure file is not in use before renaming
     time.sleep(3)
@@ -438,10 +438,10 @@ def save_pdf(rx_nbr, fill_nbr):
     # Attempt to rename the file
     try:
         os.rename(default_filename, new_filename)
-        logging.debug(f"✅ Renamed PDF to: {new_filename}")
+        logging.debug(f"Renamed PDF to: {new_filename}")
         rename_success = True
     except Exception as e:
-        logging.error(f"❌ Failed to rename PDF: {e}")
+        logging.error(f"Failed to rename PDF: {e}")
         rename_success = False
 
     # Cleanup: Delete generic PDFs and files older than 10 days
@@ -459,9 +459,9 @@ def save_pdf(rx_nbr, fill_nbr):
                 logging.debug(f"🗑 Deleted old/generic file: {file_path}")
 
     except Exception as e:
-        logging.error(f"❌ Failed to clean up old PDFs: {e}")
+        logging.error(f"Failed to clean up old PDFs: {e}")
 
-    return rename_success  # ✅ Now return after cleanup
+    return rename_success  # Now return after cleanup
 
 def initialize_driver():
     options = webdriver.EdgeOptions()
@@ -540,7 +540,7 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
         store_number_field.send_keys(store_number)
         rx_number_field.send_keys(rx_nbr)
 
-        logging.info(f"Entered Store Number: {store_number} and Rx Number: {rx_nbr}")
+        logging.debug(f"Entered Store Number: {store_number} and Rx Number: {rx_nbr}")
 
         next_button = driver.find_element(By.XPATH, "//input[@value='Next >>']")
         next_button.click()
@@ -560,7 +560,7 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
         save_directory = r"C:\Tools\ABOP"
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
-            logging.debug(f"✅ Created directory: {save_directory}")
+            logging.debug(f"Created directory: {save_directory}")
 
         main_window = driver.current_window_handle
         rx_link.click()
@@ -573,17 +573,17 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
 
         while not os.path.exists(default_filename):
             if time.time() - start_time > timeout:
-                logging.error("❌ PDF file did not appear in the expected location.")
+                logging.error("PDF file did not appear in the expected location.")
                 return False
             time.sleep(2)
 
-        logging.debug(f"✅ File downloaded: {default_filename}")
+        logging.debug(f"File downloaded: {default_filename}")
 
         # 🔹 **NEW: Call save_pdf() function**
         if save_pdf(rx_nbr, fill_nbr):
-            logging.info("✅ PDF saved and renamed successfully.")
+            logging.info("PDF saved and renamed successfully.")
         else:
-            logging.error("❌ PDF renaming failed.")
+            logging.error("PDF renaming failed.")
 
         return True  
 
@@ -635,7 +635,7 @@ if __name__ == "__main__":
                 logging.info(message)
 
             # Save or process step3_results for future steps
-            logging.info("Step 3 completed successfully.")
+            #logging.info("Step 3 completed successfully.")
 
             # Filter RX details where `found` is True
             found_rx_details = [rx for rx in step3_results if rx.get("found") is True]   
@@ -677,6 +677,7 @@ if __name__ == "__main__":
         logging.error(f"An unexpected error occurred: {e}")
 
     finally:
+        logging.info("Process completed successfully.")  # ✅ Ensure this is the last log message
         if 'ssh_client' in locals() and ssh_client:
             ssh_client.close()
             logging.info("SSH connection closed.")

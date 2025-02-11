@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 import subprocess
 import os
 import webbrowser
@@ -15,6 +15,11 @@ def index():
 @app.route('/MainPage/abop')
 def abop_page():
     return render_template('abop.html')
+
+def stream_process_logs(process):
+    """Stream logs from move_to_fill.py in real-time"""
+    for line in iter(process.stdout.readline, ""):
+        yield f"data: {line}\n\n"  # Stream logs as Server-Sent Events (SSE)
 
 @app.route('/run_script', methods=['POST'])
 def run_script():
@@ -38,6 +43,11 @@ def load_utility(utility):
     except:
         return "<h2>Not Found</h2>", 404
     
+@app.route('/stream_logs')
+def stream_logs():
+    """Stream logs from move_to_fill.py in real-time."""
+    return Response(stream_process_logs(global_process), mimetype="text/event-stream")
+    
 @app.route('/run_move_to_fill', methods=['POST'])
 def run_move_to_fill():
     try:
@@ -51,17 +61,16 @@ def run_move_to_fill():
         json_data = json.dumps(data)
         script_path = os.path.join(os.getcwd(), "move_to_fill.py")
 
-        # ✅ Add logging for subprocess execution
-        print("Executing move_to_fill.py")
-
-        result = subprocess.run(["python", script_path, json_data], capture_output=True, text=True)
-
-        if result.returncode == 0:
-            print("move_to_fill.py executed successfully")  # ✅ Log success
-            return jsonify({"output": result.stdout.strip()})
-        else:
-            print("Error running move_to_fill.py:", result.stderr.strip())  # ✅ Log failure
-            return jsonify({"error": result.stderr.strip()}), 500
+        # Run move_to_fill.py as a subprocess and stream logs
+        global global_process
+        global_process = subprocess.Popen(
+            ["python", script_path, json_data],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            universal_newlines=True
+        )
+        return jsonify({"status": "Job started"})
 
     except Exception as e:
         print("Unexpected error:", str(e))

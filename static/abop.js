@@ -8,8 +8,32 @@ window.ABOPUtility = (() => {
 
     function setupSubmitListener() {
         document.getElementById("submit-btn").addEventListener("click", function () {
-            sendFormData();
+            let statusDiv = document.getElementById("status");
+    
+            // ✅ Stop any existing log stream
+            if (window.eventSource) {
+                window.eventSource.close();
+            }
+    
+            // ✅ Clear previous logs completely
+            statusDiv.innerHTML = "Starting process...<br>";
+    
+            sendFormData(); // Send the form data after clearing logs
         });
+    }
+
+    function startLogStream() {
+        let eventSource = new EventSource("/stream_logs");
+        let statusDiv = document.getElementById("status");
+
+        eventSource.onmessage = function(event) {
+            statusDiv.innerHTML += `<p>${event.data}</p>`;
+        };
+
+        eventSource.onerror = function() {
+            console.error("Error in log stream");
+            eventSource.close();
+        };
     }
 
     function sendFormData() {
@@ -18,10 +42,22 @@ window.ABOPUtility = (() => {
     
         let rxDetails = [];
         document.querySelectorAll(".input-group").forEach(group => {
-            let rxNbr = group.querySelector(".rx-nbr").value;
-            let fillNbr = group.querySelector(".fill-nbr").value;
-            let fillDisp = group.querySelector(".fill-disp").value;
-            rxDetails.push({ "rx_nbr": rxNbr, "fill_nbr": fillNbr, "fill_dsp": fillDisp });
+            let rxNbr = group.querySelector(".rx-nbr");
+            let fillNbr = group.querySelector(".fill-nbr");
+            let fillDisp = group.querySelector(".fill-disp");
+
+            if (!rxNbr.disabled) {
+                rxDetails.push({ 
+                    "rx_nbr": rxNbr.value.trim(), 
+                    "fill_nbr": fillNbr.value.trim(), 
+                    "fill_dsp": fillDisp.value.trim() 
+                });
+            } else {
+                // ✅ Clear values from disabled fields
+                rxNbr.value = "";
+                fillNbr.value = "";
+                fillDisp.value = "";
+            }
         });
     
         let sellSelected = document.getElementById("sell_rx").checked;
@@ -41,18 +77,17 @@ window.ABOPUtility = (() => {
     
         fetch("/run_move_to_fill", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(formData)
         })
-        .then(response => response.json())
+        .then(response => {
+            startLogStream();  // ✅ Start real-time log updates
+            return response.json();
+        })
         .then(data => {
             console.log("Response from backend:", data);
             if (data.error) {
-                alert("Error: " + data.error);  // ✅ Show error alert if failure
-            } else {
-                alert("Process completed successfully.");  // ✅ Show success alert
+                document.getElementById("status").innerHTML += `<p style="color:red;">Error: ${data.error}</p>`;
             }
         })
         .catch(error => {
@@ -81,7 +116,10 @@ window.ABOPUtility = (() => {
         inputGroups.forEach(inputGroup => {
             if (moveToFillCheckbox.checked && !otherChecked) {
                 inputGroup.classList.add("disabled");
-                inputGroup.querySelectorAll("input, button").forEach(el => el.disabled = true);
+                inputGroup.querySelectorAll("input, button").forEach(el => {
+                    el.disabled = true;
+                    el.value = "";  // ✅ Clear values from disabled fields
+                });
             } else {
                 inputGroup.classList.remove("disabled");
                 inputGroup.querySelectorAll("input, button").forEach(el => el.disabled = false);
