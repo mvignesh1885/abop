@@ -59,7 +59,12 @@ def run_move_to_fill():
             return jsonify({"error": "Missing required fields"}), 400
 
         json_data = json.dumps(data)
-        script_path = os.path.join(os.getcwd(), "move_to_fill.py")
+        if getattr(sys, 'frozen', False):
+            # Running inside the EXE - Adjust path for packaged files
+            script_path = os.path.join(sys._MEIPASS, "move_to_fill.py")
+        else:
+            # Running as a normal Python script
+            script_path = os.path.join(os.getcwd(), "move_to_fill.py")
 
         # Run move_to_fill.py as a subprocess and stream logs
         global global_process

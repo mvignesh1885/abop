@@ -9,4 +9,4 @@ venv/
 config/
 build/
 dist/
-app.spec
+QAUtils.spec
