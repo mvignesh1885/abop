@@ -10,3 +10,4 @@ config/
 build/
 dist/
 QAUtils.spec
+Test.py

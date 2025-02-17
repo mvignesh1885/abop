@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 import re
 import sys
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -19,6 +21,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.getLogger("WDM").setLevel(logging.CRITICAL)
 
 if getattr(sys, 'frozen', False):
     # Running as a PyInstaller bundle
@@ -464,8 +467,8 @@ def save_pdf(rx_nbr, fill_nbr):
     return rename_success  # Now return after cleanup
 
 def initialize_driver():
-    options = webdriver.EdgeOptions()
-
+    
+    options = webdriver.ChromeOptions()
     options.add_argument("--headless=new") 
     options.add_argument("--disable-gpu")
     #options.add_argument("--window-size=1920,1080")  
@@ -474,7 +477,7 @@ def initialize_driver():
     options.add_argument("--disable-popup-blocking")
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--remote-debugging-port=9222")
+    #options.add_argument("--remote-debugging-port=9222")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
 
@@ -487,10 +490,9 @@ def initialize_driver():
         "safebrowsing.enabled": False  
     }
     options.add_experimental_option("prefs", prefs)
+    #options.set_capability("ms:loggingPrefs", {"performance": "ALL"})
 
-    options.set_capability("ms:loggingPrefs", {"performance": "ALL"})
-
-    driver = webdriver.Edge(options=options)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     return driver
 
 def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr):
@@ -503,12 +505,13 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
     password = rx_audit_config["password"]
 
     logging.info("Launching RX Audit App")
-
     logging.debug(f"Launching RX Audit App at {url}")
 
     logging.debug("Initializing Edge WebDriver...")
-    driver = initialize_driver()  
+    driver = initialize_driver()
+    time.sleep(2) 
     driver.get(url)
+    logging.debug(f"Navigated to URL: {driver.current_url}")
 
     try:
         logging.debug("Waiting for the page to load...")
@@ -519,16 +522,12 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
 
         driver.find_element(By.NAME, "userid").send_keys(username)
         driver.find_element(By.NAME, "password").send_keys(password)
-
         driver.find_element(By.CSS_SELECTOR, "input[type='submit']").click()
-        
-
-        logging.info("Successfully logged into RX Audit App.")
+        logging.debug("Successfully logged into RX Audit App.")
 
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.NAME, "textRxNbr"))
         )
-
         store_number_field = driver.find_element(By.NAME, "textStoreNbr")
         rx_number_field = driver.find_element(By.NAME, "textRxNbr")
 
@@ -555,7 +554,7 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
             logging.error(f"Failed to find the RX hyperlink: {expected_link_text}")
             return
 
-        logging.info(f"Found the RX hyperlink: {expected_link_text}")
+        logging.debug(f"Found the RX hyperlink: {expected_link_text}")
 
         save_directory = r"C:\Tools\ABOP"
         if not os.path.exists(save_directory):
@@ -581,7 +580,7 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
 
         # 🔹 **NEW: Call save_pdf() function**
         if save_pdf(rx_nbr, fill_nbr):
-            logging.info("PDF saved and renamed successfully.")
+            logging.info("PDF saved successfully.")
         else:
             logging.error("PDF renaming failed.")
 
@@ -592,7 +591,7 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
         return False 
 
     finally:
-        logging.info("Closing browser session.")
+        logging.debug("Closing browser session.")
         driver.quit()  
 
 # Example usage
