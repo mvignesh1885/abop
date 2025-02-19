@@ -69,49 +69,7 @@ def load_config(CONFIG_PATH):
     except json.JSONDecodeError as e:
         logging.error(f"Error decoding JSON from config file: {e}")
         return None
-
-# Step 1: Execute Sell Service
-def perform_sell_service(env, store_number, rx_details):
-    """Perform the sell service for multiple RX details sequentially."""
-    results = {}
-
-    try:
-
-        env = env.capitalize()
-
-        for idx, rx in enumerate(rx_details, 1):
-            rx_nbr = rx["rx_nbr"]
-            fill_nbr = rx["fill_nbr"]
-            fill_dsp = rx["fill_dsp"]
-
-            url = f"https://rmps.walgreens.com/cgi-bin/possim.cgi?env={env}&store={store_number}&rxnbr={rx_nbr}&fillnbr={fill_nbr}&fillpart=0&filldsp={fill_dsp}&patresp=A&action=sell"
-            logging.debug(f"Calling URL for RX {idx}: {url}")
-
-            try:
-                response = requests.get(url, verify=False)  
-                if response.status_code == 200:
-                    if "The sell service has executed successfully" in response.text:
-                        logging.debug(f"Sell service executed successfully for RX {idx}.")
-                        results[f"RX_{idx}"] = f"Success: RX {rx_nbr} sold."
-                    else:
-                        logging.warning(f"Unexpected response for RX {idx}: {response.text}")
-                        results[f"RX_{idx}"] = f"Warning: Unexpected response for RX {rx_nbr}."
-                else:
-                    logging.error(f"Failed HTTP request for RX {idx}. Status code: {response.status_code}")
-                    results[f"RX_{idx}"] = f"Error: HTTP {response.status_code}."
-            except requests.exceptions.RequestException as e:
-                logging.error(f"Error during HTTP request for RX {idx}: {e}")
-                results[f"RX_{idx}"] = f"Error: {e}."
-
-            logging.debug(f"Completed processing for RX {idx}: {results[f'RX_{idx}']}")
-
-    except Exception as e:
-        logging.error(f"Error in perform_sell_service: {e}")
-        raise
-
-    return results
-
-
+        
 def fetch_value_from_url(CONFIG_PATH):
     """
     Fetch password from URL using username from config.json
@@ -148,8 +106,8 @@ def fetch_value_from_url(CONFIG_PATH):
             return None
     except requests.exceptions.RequestException as e:
         logging.error(f"An error occurred while fetching the password: {e}")
-        return None
-
+        return None 
+        
 def handle_interactive_login(shell, environment, directory=None):
     """
     Handles the interactive login process and navigates to the specified directory.
@@ -212,8 +170,7 @@ def handle_interactive_login(shell, environment, directory=None):
     except Exception as e:
         logging.error(f"Error during interactive login or navigation: {e}")
         raise
-
-
+        
 def connect_to_unix_server(CONFIG_PATH, environment, store_number):
     """Connects to the UNIX server, triggers the batch job, and keeps the connection open. """
     config = load_config(CONFIG_PATH)
@@ -255,69 +212,7 @@ def connect_to_unix_server(CONFIG_PATH, environment, store_number):
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
     #return None
-
-def trigger_batch_job(shell, store_number):
-    """
-    Triggers the interactive batch job and extracts the result.
-    """
-    logging.debug("Entered trigger_batch_job function.")
-    try:
-        # Step 1: Send "move_to_fill"
-        shell.send("move_to_fill\n")
-        logging.debug("Sent 'move_to_fill' command.")
-        time.sleep(2)
-        output = shell.recv(1024).decode("utf-8")
-        logging.debug(f"Received output: {output}")
-
-        # Step 2: Check for "Please enter store number"
-        if "Please enter store number" in output:
-            shell.send(f"{store_number}\n")
-            logging.debug(f"Sent store number: {store_number}")
-            time.sleep(2)
-            output = shell.recv(1024).decode("utf-8")
-            logging.debug(f"Received output: {output}")
-
-        # Step 3: Check for "Is this correct"
-        if "Is this correct" in output:
-            shell.send("y\n")
-            logging.debug("Sent 'y' for confirmation.")
-            time.sleep(2)
-            output = shell.recv(1024).decode("utf-8")
-            logging.debug(f"Received output: {output}")
-
-        # Step 4: Check for "Would you like to use the default values" 
-        if "Would you like to use the default values" in output:
-            shell.send("y\n")
-            logging.debug("Sent 'y' for confirmation.")
-            time.sleep(2)
-            output = shell.recv(4096).decode("utf-8")
-            logging.debug(f"Received output: {output}")
-
-        # Step 8: Wait until the job runs and "Done!" is displayed
-        output = wait_for_prompt(shell, "Done!")
-        logging.debug(f"Final batch job output: {output}")
-        if "Done!" not in output:
-            logging.error("Expected 'Done!' not found in batch job output.")
-            raise ValueError("Batch job did not complete successfully.")
-        else:
-            logging.info("Move to Fill job completed successfully.")
-
-        # Step 9: Extract the dynamic result message
-        result_line = extract_result_line(output, ["There was", "There were"], "moved into the tbf0_fill table")
-        if not result_line:
-            logging.error("Failed to parse the result line for UI.")
-            raise ValueError("Failed to parse the result line for UI.")
-        logging.debug(f"Batch job result: {result_line}")
-
-        return result_line  
     
-    except Exception as e:
-        logging.error(f"Error during batch job: {e}")
-        raise
-    finally:
-        # Step 10: Close the shell session
-        pass
-
 def wait_for_prompt(shell, expected_prompt, timeout=90):
     """
     Waits for a specific prompt in the shell output within a timeout.
@@ -341,76 +236,7 @@ def extract_result_line(output, prefixes, suffix):
         if match:
             return match.group(0)  
     return None
-
-def verify_rx_in_fill_table_via_sqlplus(shell, config, rx_details, store_number):
-    """
-    Verifies RX details in the database using SQL*Plus via the active shell connection.
-    """
-    db_config = config["modules"]["db"]["environments"]["sys1"]  
-    username = db_config["username"]
-    password = db_config["password"]
-
-    messages = []
-    query_results = []
-
-    try:
-        shell.send("sqlplus\n")
-        time.sleep(2)
-        shell.send(f"{username}\n")
-        time.sleep(2)
-        shell.send(f"{password}\n")
-        time.sleep(3)
-
-        for rx in rx_details:
-            query = (
-                f"SELECT COUNT(*) FROM TBF0_FILL WHERE STORE_NBR = {store_number} "
-                f"AND RX_NBR = {rx['rx_nbr']} AND FILL_NBR = {rx['fill_nbr']} "
-                f"AND FILL_NBR_DISPENSED = {rx['fill_dsp']};"
-            )
-            shell.send(f"{query}\n")
-            time.sleep(2)
-
-            if shell.recv_ready():
-                output = shell.recv(4096).decode("utf-8")
-                logging.debug(f"Query result for RX {rx['rx_nbr']}: {output}")
-
-                if "COUNT(*)" in output:
-                    match = re.search(r"COUNT\(\*\)\s*\n*-*\n*\s*(\d+)", output, re.MULTILINE)
-                    if match:
-                        count = int(match.group(1))
-                        if count > 0:
-                            logging.debug(f"RX {rx['rx_nbr']} is found in Fill table. Adding for processing.")
-                            message = f"Rx {rx['rx_nbr']} is moved to fill table."
-                            query_results.append({
-                                "rx_nbr": rx["rx_nbr"],
-                                "fill_nbr": rx["fill_nbr"],
-                                "fill_dsp": rx["fill_dsp"],
-                                "store_nbr": store_number,
-                                "found": True
-                            })
-                            messages.append(message)  
-                        else:
-                            message = f"Rx {rx['rx_nbr']} is NOT found in the fill table."
-                            query_results.append({
-                                "rx_nbr": rx["rx_nbr"],
-                                "fill_nbr": rx["fill_nbr"],
-                                "fill_dsp": rx["fill_dsp"],
-                                "store_nbr": store_number,
-                                "found": False
-                            })
-                            messages.append(message)  
-                    else:
-                        logging.error("Failed to parse the COUNT(*) result from the SQL output.")
-
-        shell.send("exit;\n")
-        time.sleep(2)
-
-    except Exception as e:
-        logging.error(f"Error during database verification: {e}")
-        raise
-
-    return messages, query_results
-
+    
 def save_pdf(rx_nbr, fill_nbr):
     """
     Locate and rename the downloaded PDF file.
@@ -493,6 +319,183 @@ def initialize_driver():
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     return driver
+
+        
+# =========================================
+# 3. ABOP FUNCTIONS
+# =========================================
+
+# Step 1: Execute Sell Service
+def perform_sell_service(env, store_number, rx_details):
+    """Perform the sell service for multiple RX details sequentially."""
+    results = {}
+
+    try:
+
+        env = env.capitalize()
+
+        for idx, rx in enumerate(rx_details, 1):
+            rx_nbr = rx["rx_nbr"]
+            fill_nbr = rx["fill_nbr"]
+            fill_dsp = rx["fill_dsp"]
+
+            url = f"https://rmps.walgreens.com/cgi-bin/possim.cgi?env={env}&store={store_number}&rxnbr={rx_nbr}&fillnbr={fill_nbr}&fillpart=0&filldsp={fill_dsp}&patresp=A&action=sell"
+            logging.debug(f"Calling URL for RX {idx}: {url}")
+
+            try:
+                response = requests.get(url, verify=False)  
+                if response.status_code == 200:
+                    if "The sell service has executed successfully" in response.text:
+                        logging.debug(f"Sell service executed successfully for RX {idx}.")
+                        results[f"RX_{idx}"] = f"Success: RX {rx_nbr} sold."
+                    else:
+                        logging.warning(f"Unexpected response for RX {idx}: {response.text}")
+                        results[f"RX_{idx}"] = f"Warning: Unexpected response for RX {rx_nbr}."
+                else:
+                    logging.error(f"Failed HTTP request for RX {idx}. Status code: {response.status_code}")
+                    results[f"RX_{idx}"] = f"Error: HTTP {response.status_code}."
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Error during HTTP request for RX {idx}: {e}")
+                results[f"RX_{idx}"] = f"Error: {e}."
+
+            logging.debug(f"Completed processing for RX {idx}: {results[f'RX_{idx}']}")
+
+    except Exception as e:
+        logging.error(f"Error in perform_sell_service: {e}")
+        raise
+
+    return results
+
+def trigger_batch_job(shell, store_number):
+    """
+    Triggers the interactive batch job and extracts the result.
+    """
+    logging.debug("Entered trigger_batch_job function.")
+    try:
+        # Step 1: Send "move_to_fill"
+        shell.send("move_to_fill\n")
+        logging.debug("Sent 'move_to_fill' command.")
+        time.sleep(2)
+        output = shell.recv(1024).decode("utf-8")
+        logging.debug(f"Received output: {output}")
+
+        # Step 2: Check for "Please enter store number"
+        if "Please enter store number" in output:
+            shell.send(f"{store_number}\n")
+            logging.debug(f"Sent store number: {store_number}")
+            time.sleep(2)
+            output = shell.recv(1024).decode("utf-8")
+            logging.debug(f"Received output: {output}")
+
+        # Step 3: Check for "Is this correct"
+        if "Is this correct" in output:
+            shell.send("y\n")
+            logging.debug("Sent 'y' for confirmation.")
+            time.sleep(2)
+            output = shell.recv(1024).decode("utf-8")
+            logging.debug(f"Received output: {output}")
+
+        # Step 4: Check for "Would you like to use the default values" 
+        if "Would you like to use the default values" in output:
+            shell.send("y\n")
+            logging.debug("Sent 'y' for confirmation.")
+            time.sleep(2)
+            output = shell.recv(4096).decode("utf-8")
+            logging.debug(f"Received output: {output}")
+
+        # Step 8: Wait until the job runs and "Done!" is displayed
+        output = wait_for_prompt(shell, "Done!")
+        logging.debug(f"Final batch job output: {output}")
+        if "Done!" not in output:
+            logging.error("Expected 'Done!' not found in batch job output.")
+            raise ValueError("Batch job did not complete successfully.")
+        else:
+            logging.info("Move to Fill job completed successfully.")
+
+        # Step 9: Extract the dynamic result message
+        result_line = extract_result_line(output, ["There was", "There were"], "moved into the tbf0_fill table")
+        if not result_line:
+            logging.error("Failed to parse the result line for UI.")
+            raise ValueError("Failed to parse the result line for UI.")
+        logging.debug(f"Batch job result: {result_line}")
+
+        return result_line  
+    
+    except Exception as e:
+        logging.error(f"Error during batch job: {e}")
+        raise
+    finally:
+        # Step 10: Close the shell session
+        pass
+
+def verify_rx_in_fill_table_via_sqlplus(shell, config, rx_details, store_number):
+    """
+    Verifies RX details in the database using SQL*Plus via the active shell connection.
+    """
+    db_config = config["modules"]["db"]["environments"]["sys1"]  
+    username = db_config["username"]
+    password = db_config["password"]
+
+    messages = []
+    query_results = []
+
+    try:
+        shell.send("sqlplus\n")
+        time.sleep(2)
+        shell.send(f"{username}\n")
+        time.sleep(2)
+        shell.send(f"{password}\n")
+        time.sleep(3)
+
+        for rx in rx_details:
+            query = (
+                f"SELECT COUNT(*) FROM TBF0_FILL WHERE STORE_NBR = {store_number} "
+                f"AND RX_NBR = {rx['rx_nbr']} AND FILL_NBR = {rx['fill_nbr']} "
+                f"AND FILL_NBR_DISPENSED = {rx['fill_dsp']};"
+            )
+            shell.send(f"{query}\n")
+            time.sleep(2)
+
+            if shell.recv_ready():
+                output = shell.recv(4096).decode("utf-8")
+                logging.debug(f"Query result for RX {rx['rx_nbr']}: {output}")
+
+                if "COUNT(*)" in output:
+                    match = re.search(r"COUNT\(\*\)\s*\n*-*\n*\s*(\d+)", output, re.MULTILINE)
+                    if match:
+                        count = int(match.group(1))
+                        if count > 0:
+                            logging.debug(f"RX {rx['rx_nbr']} is found in Fill table. Adding for processing.")
+                            message = f"Rx {rx['rx_nbr']} is moved to fill table."
+                            query_results.append({
+                                "rx_nbr": rx["rx_nbr"],
+                                "fill_nbr": rx["fill_nbr"],
+                                "fill_dsp": rx["fill_dsp"],
+                                "store_nbr": store_number,
+                                "found": True
+                            })
+                            messages.append(message)  
+                        else:
+                            message = f"Rx {rx['rx_nbr']} is NOT found in the fill table."
+                            query_results.append({
+                                "rx_nbr": rx["rx_nbr"],
+                                "fill_nbr": rx["fill_nbr"],
+                                "fill_dsp": rx["fill_dsp"],
+                                "store_nbr": store_number,
+                                "found": False
+                            })
+                            messages.append(message)  
+                    else:
+                        logging.error("Failed to parse the COUNT(*) result from the SQL output.")
+
+        shell.send("exit;\n")
+        time.sleep(2)
+
+    except Exception as e:
+        logging.error(f"Error during database verification: {e}")
+        raise
+
+    return messages, query_results
 
 def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr):
     """
@@ -591,7 +594,11 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
 
     finally:
         logging.debug("Closing browser session.")
-        driver.quit()  
+        driver.quit() 
+ 
+# =========================================
+# 4. FLASK ROUTES
+# =========================================
 
 @app.route("/")
 def home():
@@ -727,7 +734,10 @@ def run_move_to_fill():
     
     return jsonify({"status": "Process completed successfully"}), 200 
 
-# Example usage
+# =========================================
+# 5. MAIN APP EXECUTION
+# =========================================
+
 if __name__ == "__main__":
     Timer(2, lambda: webbrowser.open("http://127.0.0.1:5000/")).start()
     app.run(host="127.0.0.1", port=5000, debug=False)  # ✅ Use debug=False for stability
