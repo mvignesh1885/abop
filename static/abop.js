@@ -23,18 +23,34 @@ window.ABOPUtility = (() => {
     }
 
     function startLogStream() {
-        window.eventSource = new EventSource("/stream_logs");
-        let statusDiv = document.getElementById("status");
-
-        window.eventSource.onmessage = function(event) {
-            statusDiv.innerHTML += `<p>${event.data}</p>`;
+		console.log("Starting real-time log streaming...");
+		let statusDiv = document.getElementById("status");
+	
+		// ✅ Close any existing event stream before creating a new one
+		if (window.eventSource) {
+			window.eventSource.close();
+		}
+	
+		window.eventSource = new EventSource("/stream_logs");
+	
+		window.eventSource.onmessage = function(event) {
+			let logMessage = event.data.trim();
+    
+            // Prevent "Process completed successfully" from replacing logs
+            if (logMessage && logMessage !== "Process completed successfully") {
+                let logElement = document.createElement("p");
+                logElement.textContent = logMessage;
+                statusDiv.appendChild(logElement);
+                statusDiv.scrollTop = statusDiv.scrollHeight; // Auto-scroll
+            }
         };
-
-        window.eventSource.onerror = function() {
-            console.error("Error in log stream");
-            window.eventSource.close();
-        };
-    }
+	
+		window.eventSource.onerror = function() {
+			console.error("Log stream error. Attempting to reconnect...");
+			window.eventSource.close();
+			setTimeout(startLogStream, 3000);  // ✅ Reconnect after 3 seconds
+		};
+	}
 
     function sendFormData() {
         let environment = document.getElementById("env-dropdown").value;
@@ -74,24 +90,17 @@ window.ABOPUtility = (() => {
         };
     
         console.log("Sending data to backend:", formData);
-    
+        
+        startLogStream(); 
+
         fetch("/run_move_to_fill", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(formData)
         })
-        .then(response => {
-            startLogStream();  // ✅ Start real-time log updates
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
             console.log("Response from backend:", data);
-            let statusDiv = document.getElementById("status");
-            if (data.error) {
-                statusDiv.innerHTML += `<p style="color:red;">Error: ${data.error}</p>`;
-            } else {
-                statusDiv.innerHTML += `<p>${data.status}</p>`;
-            }
         })
         .catch(error => {
             console.error("Error:", error);

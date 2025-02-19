@@ -1,3 +1,6 @@
+# =========================================
+#  1. IMPORTS & GLOBAL CONFIGURATIONS
+# =========================================
 import paramiko
 import json
 import requests
@@ -16,59 +19,42 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from flask import Flask, render_template, request, jsonify, send_from_directory, Response
-import json
-import logging
 import webbrowser
 from threading import Timer
 import subprocess
+import queue
 
 app = Flask(__name__)
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Suppress SSL warnings
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# Configure logging
+    #Set Logging level
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.getLogger("WDM").setLevel(logging.CRITICAL)
 
-if getattr(sys, 'frozen', False):
-    # Running as a PyInstaller bundle
-    BASE_DIR = sys._MEIPASS
-else:
-    # Running as a normal Python script
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    #Queue Set Up for log streaming
+log_queue = queue.Queue()
+class QueueLogger(logging.Handler):
+    """Custom logging handler to send logs to a queue."""
+    def emit(self, record):
+        log_queue.put(self.format(record))
+        sys.stdout.flush() 
+    # Attach QueueLogger to Flask logging
+queue_handler = QueueLogger()
+queue_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logging.getLogger().addHandler(queue_handler)
 
+    # Suppress SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    # Set Base Directory
+if getattr(sys, 'frozen', False):
+    BASE_DIR = sys._MEIPASS # Running as a PyInstaller bundle
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # Running as a normal Python script
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.json")
 
-'''
-if len(sys.argv) > 1:
-    try:
-        input_data = json.loads(sys.argv[1])
-        #print("Received input in move_to_fill.py:", json.dumps(input_data, indent=2))  # ✅ Debugging log
-    except json.JSONDecodeError:
-        print("Invalid JSON input")
-        sys.exit(1)
-else:
-    print("No input provided")
-    sys.exit(1)
-
-
-# Assign values from input_data
-ENVIRONMENT = input_data["ENVIRONMENT"]
-STORE_NUMBER = input_data["STORE_NUMBER"]
-sell_selected = input_data["sell_selected"]
-move_to_fill_selected = input_data["move_to_fill_selected"]
-generate_abop_selected = input_data["generate_abop_selected"]
-
-RX_DETAILS = input_data.get("rx_details",[])
-
-if move_to_fill_selected and not sell_selected and not generate_abop_selected:
-    RX_DETAILS = []  # Ignore RX_DETAILS when only move_to_fill is selected
-
-logging.info(f"Process started for Store {STORE_NUMBER} in {ENVIRONMENT}.")
-'''
+# =========================================
+# 2. HELPER FUNCTIONS
+# =========================================
 
 def load_config(CONFIG_PATH):
     """
@@ -630,28 +616,19 @@ def open_browser():
     
 @app.route('/stream_logs')
 def stream_logs():
-    """Stream live logs from the running process to the UI."""
-    def generate_logs():
-        try:
-            process = subprocess.Popen(
-                ["python", "-u", "app_new.py"],  # Replace "app_new.py" with the correct script
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
-            )
+    """Stream logs from the log queue to the frontend."""
+    def generate():
+        while True:
+            try:
+                log_message = log_queue.get(timeout=3)  # Wait for log messages
+                if "127.0.0.1" in log_message:
+                    continue
+                yield f"data: {log_message}\n\n"
+                sys.stdout.flush()
+            except queue.Empty:
+                continue  # Keep waiting for logs
 
-            # ✅ Stream logs in real time
-            for line in iter(process.stdout.readline, ''):
-                yield f"data: {line.strip()}\n\n"
-            
-            process.stdout.close()
-            process.wait()
-
-        except Exception as e:
-            yield f"data: Error streaming logs: {str(e)}\n\n"
-
-    return Response(generate_logs(), mimetype="text/event-stream")
+    return Response(generate(), mimetype="text/event-stream")
     
 @app.route("/run_move_to_fill", methods=["POST"])
 def run_move_to_fill():
@@ -696,9 +673,6 @@ def run_move_to_fill():
                 for message in step3_messages:
                     logging.info(message)
     
-                # Save or process step3_results for future steps
-                #logging.info("Step 3 completed successfully.")
-    
                 # Filter RX details where `found` is True
                 found_rx_details = [rx for rx in step3_results if rx.get("found") is True]   
             
@@ -737,36 +711,24 @@ def run_move_to_fill():
     
         except Exception as e:
             logging.error(f"An unexpected error occurred: {e}")
+            response = {"status": "Process failed. Please try again"}
+            return jsonify(response), 500
     
         finally:
             logging.info("Process completed successfully.")  # ✅ Ensure this is the last log message
             if 'ssh_client' in locals() and ssh_client:
                 ssh_client.close()
                 logging.info("SSH connection closed.")
-        
-        response = {
-            "status": "Processing started",
-            "store_number": STORE_NUMBER,
-            "environment": ENVIRONMENT,
-        }
-        
-        # If no selection is made, return an error
-        if not (sell_selected or move_to_fill_selected or generate_abop_selected):
-            return jsonify({"error": "No action selected. Please choose at least one option."}), 400
-
-        # Log the selected actions
-        logging.info(f"Processing Sell: {sell_selected}, Move to Fill: {move_to_fill_selected}, Generate ABOP: {generate_abop_selected}")
-
-        return jsonify(response)
-        
+                               
     except Exception as e:
-        logging.error(f"Error processing request: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Process failed due to an error: {e}")
+        response["status"] = "Process failed. Please try again"
+        return jsonify(response), 500
+    
+    return jsonify({"status": "Process completed successfully"}), 200 
 
 # Example usage
 if __name__ == "__main__":
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        open_browser()
-    
+    Timer(2, lambda: webbrowser.open("http://127.0.0.1:5000/")).start()
     app.run(host="127.0.0.1", port=5000, debug=False)  # ✅ Use debug=False for stability
 
