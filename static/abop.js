@@ -23,16 +23,16 @@ window.ABOPUtility = (() => {
     }
 
     function startLogStream() {
-        let eventSource = new EventSource("/stream_logs");
+        window.eventSource = new EventSource("/stream_logs");
         let statusDiv = document.getElementById("status");
 
-        eventSource.onmessage = function(event) {
+        window.eventSource.onmessage = function(event) {
             statusDiv.innerHTML += `<p>${event.data}</p>`;
         };
 
-        eventSource.onerror = function() {
+        window.eventSource.onerror = function() {
             console.error("Error in log stream");
-            eventSource.close();
+            window.eventSource.close();
         };
     }
 
@@ -86,8 +86,11 @@ window.ABOPUtility = (() => {
         })
         .then(data => {
             console.log("Response from backend:", data);
+            let statusDiv = document.getElementById("status");
             if (data.error) {
-                document.getElementById("status").innerHTML += `<p style="color:red;">Error: ${data.error}</p>`;
+                statusDiv.innerHTML += `<p style="color:red;">Error: ${data.error}</p>`;
+            } else {
+                statusDiv.innerHTML += `<p>${data.status}</p>`;
             }
         })
         .catch(error => {
