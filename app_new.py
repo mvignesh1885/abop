@@ -23,6 +23,7 @@ import webbrowser
 from threading import Timer
 import subprocess
 import queue
+import pyautogui
 
 app = Flask(__name__)
 
@@ -107,6 +108,32 @@ def fetch_value_from_url(CONFIG_PATH):
     except requests.exceptions.RequestException as e:
         logging.error(f"An error occurred while fetching the password: {e}")
         return None 
+    
+def handle_putty_login(environment):
+    """ Handles the interactive login process in PuTTY """
+    time.sleep(3)  # Wait for prompt
+
+
+    if environment == "IC+ Central - Sys 1":
+        pyautogui.typewrite("N")
+        pyautogui.press("enter")
+        time.sleep(3)
+        pyautogui.typewrite("Y")
+        pyautogui.press("enter")
+        time.sleep(3)
+
+    elif environment == "IC+ Central - Sys 2":
+        pyautogui.typewrite("N")
+        pyautogui.press("enter")
+        time.sleep(3)
+        pyautogui.typewrite("N")
+        pyautogui.press("enter")
+        time.sleep(3)
+        pyautogui.typewrite("Y")
+        pyautogui.press("enter")
+        time.sleep(3)
+
+    time.sleep(2)  # Final wait to confirm login completion
         
 def handle_interactive_login(shell, environment, directory=None):
     """
@@ -595,20 +622,76 @@ def process_rx_audit_backend(config, environment, store_number, rx_nbr, fill_nbr
     finally:
         logging.debug("Closing browser session.")
         driver.quit() 
- 
+
 # =========================================
-# 4. FLASK ROUTES
+# 4. PUTTY LAUNCH
+# =========================================
+
+def launch_putty_session():
+    """ Launch PuTTY and automate login """
+    try:
+        data = request.json
+        environment = data.get("ENVIRONMENT")
+        store_number = data.get("STORE_NUMBER", "")
+        
+        if not environment:
+            return jsonify({"error": "Environment selection is required"}), 400
+        
+        config = load_config(CONFIG_PATH)
+        env_config = config["modules"]["putty_launcher"]["environments"].get(environment, {})
+        
+        if environment == "Local":
+            hostname = f"svr{store_number}"
+        else:
+            hostname = env_config.get("hostname")
+        
+        username = env_config.get("username")
+        password = env_config.get("password")
+        
+        if environment in ["IC+ Central - Sys 1", "IC+ Central - Sys 2"]:
+            password = fetch_value_from_url(CONFIG_PATH)
+        
+        if not hostname or not username or not password:
+            return jsonify({"error": "Missing credentials in config.json"}), 400
+        
+        putty_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "putty.exe")
+        subprocess.Popen([putty_path, "-ssh", f"{username}@{hostname}"])
+        
+        time.sleep(3)  # Wait for PuTTY to open
+
+        #logging.info(f"Would send password: {password}")
+        
+        # Automate login process
+        pyautogui.typewrite(password)
+        pyautogui.press("enter")
+        time.sleep(3)
+        
+        if environment in ["IC+ Central - Sys 1", "IC+ Central - Sys 2"]:
+            logging.info(f"Calling handle_putty_login() for {environment}")
+            handle_putty_login(environment)
+        
+        return jsonify({"message": "PuTTY launched successfully"}), 200
+    
+    except Exception as e:
+        logging.error(f"Error launching PuTTY: {e}")
+        return jsonify({"error": f"Failed to launch PuTTY: {str(e)}"}), 500
+
+# =========================================
+# 5. FLASK ROUTES
 # =========================================
 
 @app.route("/")
 def home():
     return render_template("index.html")
     
-@app.route("/load_utility/<utility_name>")
-def load_utility(utility_name):
-    if utility_name == "abop":
-        return render_template("abop.html")
-    return "Utility Not Found", 404
+@app.route("/load_utility/<utility>")
+def load_utility(utility):
+    """Dynamically load utility HTML pages."""
+    try:
+        return render_template(f"{utility}.html")
+    except Exception as e:
+        logging.error(f"Error loading {utility}.html: {e}")
+        return "<h2>Utility Not Found</h2>", 404
     
 @app.route("/static/<path:filename>")
 def static_files(filename):
@@ -732,10 +815,29 @@ def run_move_to_fill():
         response["status"] = "Process failed. Please try again"
         return jsonify(response), 500
     
-    return jsonify({"status": "Process completed successfully"}), 200 
+    return jsonify({"status": "Process completed successfully"}), 200
+
+@app.route('/launch_putty', methods=['POST'])
+def launch_putty_endpoint():
+    """API endpoint to launch PuTTY based on selected environment and store number."""
+    try:
+        data = request.json
+        environment = data.get("ENVIRONMENT")
+        store_number = data.get("STORE_NUMBER", None)
+
+        if not environment:
+            logging.error("Environment selection is missing in request.")
+            return jsonify({"error": "Environment is required"}), 400
+
+        response = launch_putty_session()
+        return response
+
+    except Exception as e:
+        logging.error(f"Error in launch_putty_endpoint: {e}")
+        return jsonify({"error": "Failed to process request"}), 500
 
 # =========================================
-# 5. MAIN APP EXECUTION
+# 6. MAIN APP EXECUTION
 # =========================================
 
 if __name__ == "__main__":

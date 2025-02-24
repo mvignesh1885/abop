@@ -15,6 +15,7 @@
     <select id="utility-select" onchange="loadUtility()">
         <option value="">-- Select --</option>
         <option value="abop">ABOP</option>
+        <option value="putty_launcher">Putty Launcher</option>
     </select>
 
     <div id="utility-container" class="utility-container">
@@ -60,11 +61,14 @@
             console.log(`${utilityName}.js loaded successfully.`);
     
             setTimeout(() => {
-                if (window.ABOPUtility && typeof window.ABOPUtility.init === "function") {
+                if (utilityName === "abop" && window.ABOPUtility && typeof window.ABOPUtility.init === "function") {
                     console.log("Executing ABOPUtility.init()");
                     window.ABOPUtility.init();
+                } else if (utilityName === "putty_launcher" && window.PuttyLauncher && typeof window.PuttyLauncher.init === "function") {
+                    console.log("Executing PuttyLauncher.init()");
+                    window.PuttyLauncher.init();
                 } else {
-                    console.error("ABOPUtility.init is not defined.");
+                    console.error(`${utilityName}.init is not defined.`);
                 }
             }, 100);
         };
