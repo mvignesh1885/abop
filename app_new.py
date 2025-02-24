@@ -835,6 +835,21 @@ def launch_putty_endpoint():
     except Exception as e:
         logging.error(f"Error in launch_putty_endpoint: {e}")
         return jsonify({"error": "Failed to process request"}), 500
+    
+@app.route("/get_putty_environments", methods=["GET"])
+def get_putty_environments():
+    """Fetch environment names for Putty Launcher dynamically from config.json"""
+    try:
+        config = load_config(CONFIG_PATH)
+        if not config:
+            return jsonify({"error": "Failed to load config.json"}), 500
+
+        environments = list(config["modules"]["putty_launcher"]["environments"].keys())
+        return jsonify({"environments": environments}), 200
+
+    except Exception as e:
+        logging.error(f"Error fetching environments: {e}")
+        return jsonify({"error": "Failed to retrieve environments"}), 500
 
 # =========================================
 # 6. MAIN APP EXECUTION

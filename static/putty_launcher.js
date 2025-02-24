@@ -2,6 +2,28 @@ window.PuttyLauncher = (() => {
     function attachEventListeners() {
         document.getElementById("putty-env-dropdown").addEventListener("change", updateStoreNumberState);
         document.getElementById("launch-putty-btn").addEventListener("click", sendPuttyRequest);
+        fetchPuttyEnvironments();
+    }
+
+    function fetchPuttyEnvironments() {
+        fetch("/get_putty_environments")
+            .then(response => response.json())
+            .then(data => {
+                let envDropdown = document.getElementById("putty-env-dropdown");
+                envDropdown.innerHTML = '<option value="">--Select Environment--</option>';
+
+                if (data.environments) {
+                    data.environments.forEach(env => {
+                        let option = document.createElement("option");
+                        option.value = env;
+                        option.textContent = env;
+                        envDropdown.appendChild(option);
+                    });
+                } else {
+                    console.error("Failed to fetch environments.");
+                }
+            })
+            .catch(error => console.error("Error fetching environments:", error));
     }
 
     function updateStoreNumberState() {
